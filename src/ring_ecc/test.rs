@@ -51,7 +51,7 @@
 //! Here's how you would consume the test data:
 //!
 //! ```ignore
-//! use ring::test;
+//! use crate::ring_ecc::test;
 //!
 //! test::run(test::test_file!("hmac_tests.txt"), |section, test_case| {
 //!     assert_eq!(section, ""); // This test doesn't use named sections.
@@ -85,7 +85,7 @@
 //! If the test fails, this will be printed (if `$RUST_BACKTRACE` is `1`):
 //!
 //! ```text
-//! src/example_tests.txt: Test panicked.
+//! src/ring_ecc/example_tests.txt: Test panicked.
 //! Curve = P-256
 //! a = 2b11cb945c8cf152ffa4c9c2b1c965b019b35d0b7626919ef0ae6cb9d232f8af
 //! b = 18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c
@@ -113,7 +113,7 @@
 //! ```
 //!
 //! Notice that the output shows the name of the data file
-//! (`src/example_tests.txt`), the test inputs that led to the failure, and the
+//! (`src/ring_ecc/example_tests.txt`), the test inputs that led to the failure, and the
 //! stack trace to the line in the test code that panicked: entry 9 in the
 //! stack trace pointing to line 652 of the file `example.rs`.
 
@@ -121,7 +121,7 @@
 use alloc::{format, string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
-use crate::{bits, digest, error};
+use crate::ring_ecc::{bits, digest, error};
 
 #[cfg(any(feature = "std", feature = "test_logging"))]
 extern crate std;
@@ -288,7 +288,7 @@ impl TestCase {
 #[macro_export]
 macro_rules! test_file {
     ($file_name:expr) => {
-        crate::test::File {
+        crate::ring_ecc::test::File {
             file_name: $file_name,
             contents: include_str!($file_name),
         }
@@ -463,7 +463,7 @@ fn parse_test_case(
     }
 }
 
-/// Deterministic implementations of `ring::rand::SecureRandom`.
+/// Deterministic implementations of `crate::ring_ecc::rand::SecureRandom`.
 ///
 /// These implementations are particularly useful for testing implementations
 /// of randomized algorithms & protocols using known-answer-tests where the
@@ -471,7 +471,7 @@ fn parse_test_case(
 /// useful for some types of fuzzing.
 #[doc(hidden)]
 pub mod rand {
-    use crate::{error, polyfill, rand};
+    use crate::ring_ecc::{error, polyfill, rand};
 
     /// An implementation of `SecureRandom` that always fills the output slice
     /// with the given byte.
@@ -541,7 +541,7 @@ pub mod rand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{error, test};
+    use crate::ring_ecc::{error, test};
 
     #[test]
     fn one_ok() {

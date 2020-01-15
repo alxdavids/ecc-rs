@@ -24,7 +24,7 @@
 // The goal for this implementation is to drive the overhead as close to zero
 // as possible.
 
-use crate::{c, cpu, debug, endian::*, polyfill};
+use crate::ring_ecc::{c, cpu, debug, endian::*, polyfill};
 use core::num::Wrapping;
 
 mod sha1;
@@ -118,7 +118,7 @@ impl BlockContext {
 /// # Examples
 ///
 /// ```
-/// use ring::digest;
+/// use ring::ring_ecc::digest;
 ///
 /// let one_shot = digest::digest(&digest::SHA384, b"hello, world");
 ///
@@ -209,7 +209,7 @@ impl Context {
 /// ```
 /// # #[cfg(feature = "alloc")]
 /// # {
-/// use ring::{digest, test};
+/// use ring::ring_ecc::{digest, test};
 /// let expected_hex = "09ca7e4eaa6e8ae9c7d261167129184883644d07dfba7cbfbc4c8a2e08360d5b";
 /// let expected: Vec<u8> = test::from_hex(expected_hex).unwrap();
 /// let actual = digest::digest(&digest::SHA256, b"hello, world");
@@ -513,7 +513,7 @@ mod tests {
 
     mod max_input {
         use super::super::super::digest;
-        use crate::polyfill;
+        use crate::ring_ecc::polyfill;
         use alloc::vec;
 
         macro_rules! max_input_tests {
@@ -574,7 +574,7 @@ mod tests {
                     state: alg.initial_state,
                     completed_data_blocks: max_blocks - 1,
                     algorithm: alg,
-                    cpu_features: crate::cpu::features(),
+                    cpu_features: crate::ring_ecc::cpu::features(),
                 },
                 pending: [0u8; digest::MAX_BLOCK_LEN],
                 num_pending: 0,

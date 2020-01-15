@@ -12,7 +12,7 @@
 // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use crate::{
+use crate::ring_ecc::{
     arithmetic::montgomery::{Encoding, ProductEncoding},
     limb::{Limb, LIMB_BITS},
 };

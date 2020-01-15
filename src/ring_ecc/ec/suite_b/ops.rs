@@ -12,7 +12,7 @@
 // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use crate::{arithmetic::montgomery::*, c, error, limb::*};
+use crate::ring_ecc::{arithmetic::montgomery::*, c, error, limb::*};
 use core::marker::PhantomData;
 use untrusted;
 
@@ -439,7 +439,7 @@ extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test;
+    use crate::ring_ecc::test;
     use alloc::{format, vec, vec::Vec};
     use untrusted;
 

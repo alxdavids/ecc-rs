@@ -17,7 +17,7 @@
 //! This module contains the foundational parts of an ASN.1 DER parser.
 
 use super::Positive;
-use crate::error;
+use crate::ring_ecc::error;
 use untrusted;
 
 pub const CONSTRUCTED: u8 = 1 << 5;
@@ -211,7 +211,7 @@ pub fn positive_integer<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error;
+    use crate::ring_ecc::error;
     use untrusted;
 
     fn with_good_i<F, R>(value: &[u8], f: F)

@@ -1,5 +1,5 @@
 use super::{Curve, ELEM_MAX_BYTES, SEED_MAX_BYTES};
-use crate::{cpu, error, rand};
+use crate::ring_ecc::{cpu, error, rand};
 
 pub struct KeyPair {
     seed: Seed,

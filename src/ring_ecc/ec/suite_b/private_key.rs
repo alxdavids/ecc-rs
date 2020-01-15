@@ -16,7 +16,7 @@
 //! ECDSA signing).
 
 use super::{ops::*, verify_affine_point_is_on_the_curve};
-use crate::{
+use crate::ring_ecc::{
     arithmetic::montgomery::R,
     ec, error,
     limb::{self, LIMB_BYTES},

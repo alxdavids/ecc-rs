@@ -12,7 +12,7 @@
 // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use crate::error;
+use crate::ring_ecc::error;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub struct BitLength(usize);

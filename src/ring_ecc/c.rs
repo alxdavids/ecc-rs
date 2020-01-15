@@ -28,7 +28,7 @@ pub(crate) type size_t = usize;
 
 #[cfg(all(test, any(unix, windows)))]
 mod tests {
-    use crate::c;
+    use crate::ring_ecc::c;
 
     #[test]
     fn test_libc_compatible() {

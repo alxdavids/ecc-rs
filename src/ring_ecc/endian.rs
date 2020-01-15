@@ -1,4 +1,4 @@
-use crate::sealed;
+use crate::ring_ecc::sealed;
 use core::num::Wrapping;
 
 pub trait Encoding<T>: Copy + From<T> + Sized + sealed::Sealed

@@ -18,11 +18,11 @@
 //! Limbs ordered least-significant-limb to most-significant-limb. The bits
 //! limbs use the native endianness.
 
-use crate::{c, error};
+use crate::ring_ecc::{c, error};
 use untrusted;
 
 #[cfg(feature = "alloc")]
-use crate::bits;
+use crate::ring_ecc::bits;
 
 #[cfg(feature = "alloc")]
 use core::num::Wrapping;

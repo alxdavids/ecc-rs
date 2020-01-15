@@ -16,7 +16,7 @@
 //! ECDH agreement).
 
 use super::{ops::*, verify_affine_point_is_on_the_curve};
-use crate::{arithmetic::montgomery::*, error};
+use crate::ring_ecc::{arithmetic::montgomery::*, error};
 use untrusted;
 
 /// Parses a public key encoded in uncompressed form. The key is validated
@@ -68,7 +68,7 @@ pub fn parse_uncompressed_point(
 #[cfg(test)]
 mod tests {
     use super::{super::ops, *};
-    use crate::test;
+    use crate::ring_ecc::test;
     use untrusted;
 
     #[test]

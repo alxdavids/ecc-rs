@@ -30,7 +30,7 @@
     warnings
 )]
 
-use ring::{digest, test, test_file};
+use crate::ring_ecc::{digest, test, test_file};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -69,7 +69,7 @@ fn digest_misc() {
 }
 
 mod digest_shavs {
-    use ring::{digest, test};
+    use crate::ring_ecc::{digest, test};
 
     fn run_known_answer_test(digest_alg: &'static digest::Algorithm, test_file: test::File) {
         let section_name = &format!("L = {}", digest_alg.output_len);
@@ -99,7 +99,7 @@ mod digest_shavs {
             #[allow(non_snake_case)]
             mod $algorithm_name {
                 use super::{run_known_answer_test, run_monte_carlo_test};
-                use ring::{digest, test_file};
+                use crate::ring_ecc::{digest, test_file};
 
                 #[cfg(target_arch = "wasm32")]
                 use wasm_bindgen_test::wasm_bindgen_test;

@@ -25,7 +25,7 @@
 //! (seccomp filters on Linux in particular). See `SystemRandom`'s
 //! documentation for more details.
 
-use crate::error;
+use crate::ring_ecc::error;
 
 /// A secure random number generator.
 pub trait SecureRandom: sealed::SecureRandom {
@@ -71,7 +71,7 @@ where
 }
 
 pub(crate) mod sealed {
-    use crate::error;
+    use crate::ring_ecc::error;
 
     pub trait SecureRandom: core::fmt::Debug {
         /// Fills `dest` with random bytes.
@@ -100,7 +100,7 @@ pub(crate) mod sealed {
     impl_random_arrays![4 8 16 32 48 64];
 }
 
-/// A type that can be returned by `ring::rand::generate()`.
+/// A type that can be returned by `crate::ring_ecc::rand::generate()`.
 pub trait RandomlyConstructable: self::sealed::RandomlyConstructable {}
 impl<T> RandomlyConstructable for T where T: self::sealed::RandomlyConstructable {}
 
@@ -161,7 +161,7 @@ impl sealed::SecureRandom for SystemRandom {
     }
 }
 
-impl crate::sealed::Sealed for SystemRandom {}
+impl crate::ring_ecc::sealed::Sealed for SystemRandom {}
 
 #[cfg(any(
     all(
@@ -195,7 +195,7 @@ use self::fuchsia::fill as fill_impl;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod sysrand_chunk {
-    use crate::{c, error};
+    use crate::ring_ecc::{c, error};
 
     #[inline]
     pub fn chunk(dest: &mut [u8]) -> Result<usize, error::Unspecified> {
@@ -249,7 +249,7 @@ mod sysrand_chunk {
     target_env = "",
 ))]
 mod sysrand_chunk {
-    use crate::error;
+    use crate::ring_ecc::error;
 
     pub fn chunk(mut dest: &mut [u8]) -> Result<usize, error::Unspecified> {
         // This limit is specified in
@@ -272,7 +272,7 @@ mod sysrand_chunk {
 
 #[cfg(windows)]
 mod sysrand_chunk {
-    use crate::{error, polyfill};
+    use crate::ring_ecc::{error, polyfill};
 
     #[inline]
     pub fn chunk(dest: &mut [u8]) -> Result<usize, error::Unspecified> {
@@ -302,7 +302,7 @@ mod sysrand_chunk {
 ))]
 mod sysrand {
     use super::sysrand_chunk::chunk;
-    use crate::error;
+    use crate::ring_ecc::error;
 
     pub fn fill(dest: &mut [u8]) -> Result<(), error::Unspecified> {
         let mut read_len = 0;
@@ -320,7 +320,7 @@ mod sysrand {
     feature = "dev_urandom_fallback"
 ))]
 mod sysrand_or_urandom {
-    use crate::error;
+    use crate::ring_ecc::error;
 
     enum Mechanism {
         Sysrand,
@@ -360,7 +360,7 @@ mod sysrand_or_urandom {
     target_os = "solaris"
 ))]
 mod urandom {
-    use crate::error;
+    use crate::ring_ecc::error;
 
     #[cfg_attr(any(target_os = "android", target_os = "linux"), cold, inline(never))]
     pub fn fill(dest: &mut [u8]) -> Result<(), error::Unspecified> {
@@ -385,7 +385,7 @@ mod urandom {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod darwin {
-    use crate::{c, error};
+    use crate::ring_ecc::{c, error};
 
     pub fn fill(dest: &mut [u8]) -> Result<(), error::Unspecified> {
         let r = unsafe { SecRandomCopyBytes(kSecRandomDefault, dest.len(), dest.as_mut_ptr()) };
@@ -418,7 +418,7 @@ mod darwin {
 
 #[cfg(any(target_os = "fuchsia"))]
 mod fuchsia {
-    use crate::error;
+    use crate::ring_ecc::error;
 
     pub fn fill(dest: &mut [u8]) -> Result<(), error::Unspecified> {
         unsafe {

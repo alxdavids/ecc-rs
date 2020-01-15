@@ -14,7 +14,7 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 use super::sha2::{ch, maj, Word};
-use crate::c;
+use crate::ring_ecc::c;
 use core::{convert::TryInto, num::Wrapping};
 
 pub const BLOCK_LEN: usize = 512 / 8;
