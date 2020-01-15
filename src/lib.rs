@@ -12,34 +12,44 @@
     unused_qualifications,
     variant_size_differences,
 )]
-#![forbid(
-    anonymous_parameters,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_extern_crates,
-    unused_import_braces,
-    unused_results,
-    warnings
-)]
+// #![forbid(
+//     anonymous_parameters,
+//     trivial_casts,
+//     trivial_numeric_casts,
+//     unused_extern_crates,
+//     unused_import_braces,
+//     unused_results,
+//     warnings
+// )]
 #![no_std]
 #![cfg_attr(feature = "internal_benches", allow(unstable_features), feature(test))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod bits;
-pub mod c;
-pub mod error;
-pub mod limb;
-pub mod rand;
-pub mod io;
-pub mod ec;
+#[macro_use]
+pub mod debug;
+
+#[macro_use]
+pub mod test;
 
 #[macro_use]
 pub mod arithmetic;
 
 #[macro_use]
-pub mod debug;
+mod polyfill;
+
+pub mod bits;
+pub(crate) mod c;
+pub mod io;
+pub mod cpu;
+
+pub mod digest;
+pub mod ec;
+pub mod endian;
+pub mod error;
+pub mod limb;
+pub mod rand;
 
 mod sealed {
     /// Traits that are designed to only be implemented internally in *ring*.

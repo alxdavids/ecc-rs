@@ -24,44 +24,6 @@ macro_rules! derive_debug_via_id {
     };
 }
 
-macro_rules! derive_debug_via_field {
-    ($type:ty, $field:ident) => {
-        derive_debug_via_field!($type, stringify!($type), $field);
-    };
-
-    ($type:ty, $typename:expr, $field:ident) => {
-        impl ::core::fmt::Debug for $type {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> Result<(), ::core::fmt::Error> {
-                f.debug_struct($typename)
-                    .field(stringify!($field), &self.$field)
-                    .finish()
-            }
-        }
-    };
-}
-
-// Generates an implementation of the Debug trait for a type that outputs the
-// hex encoding of the byte slice representation of the value.
-macro_rules! derive_debug_self_as_ref_hex_bytes {
-    ($typename:ident) => {
-        impl ::core::fmt::Debug for $typename {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> Result<(), ::core::fmt::Error> {
-                crate::debug::write_hex_tuple(f, stringify!($typename), self)
-            }
-        }
-    };
-}
-
-pub(crate) fn write_hex_tuple(
-    fmt: &mut core::fmt::Formatter,
-    type_name: &str,
-    value: &dyn AsRef<[u8]>,
-) -> Result<(), ::core::fmt::Error> {
-    fmt.debug_tuple(type_name)
-        .field(&HexStr(value.as_ref()))
-        .finish()
-}
-
 pub struct HexStr<'a>(pub &'a [u8]);
 
 impl core::fmt::Debug for HexStr<'_> {
