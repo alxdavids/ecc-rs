@@ -24,6 +24,25 @@ macro_rules! p384_limbs {
     };
 }
 
+pub static P384_GENERATOR: (Elem<R>, Elem<R>) = (
+    Elem {
+        limbs: p384_limbs![
+            0x49c0b528, 0x3dd07566, 0xa0d6ce38, 0x20e378e2, 0x541b4d6e, 0x879c3afc, 0x59a30eff,
+            0x64548684, 0x614ede2b, 0x812ff723, 0x299e1513, 0x4d3aadc2
+        ],
+        m: PhantomData,
+        encoding: PhantomData,
+    },
+    Elem {
+        limbs: p384_limbs![
+            0x4b03a4fe, 0x23043dad, 0x7bb4a9ac, 0xa1bfa8bf, 0x2e83b050, 0x8bade756, 0x68f4ffd9,
+            0xc6c35219, 0x3969a840, 0xdd800226, 0x5a15c5e9, 0x2b78abc2
+        ],
+        m: PhantomData,
+        encoding: PhantomData,
+    },
+);
+
 pub static COMMON_OPS: CommonOps = CommonOps {
     num_limbs: 384 / LIMB_BITS,
 
@@ -132,25 +151,6 @@ fn p384_elem_inv_squared(a: &Elem<R>) -> Elem<R> {
 
 fn p384_point_mul_base_impl(a: &Scalar) -> Point {
     // XXX: Not efficient. TODO: Precompute multiples of the generator.
-    static P384_GENERATOR: (Elem<R>, Elem<R>) = (
-        Elem {
-            limbs: p384_limbs![
-                0x49c0b528, 0x3dd07566, 0xa0d6ce38, 0x20e378e2, 0x541b4d6e, 0x879c3afc, 0x59a30eff,
-                0x64548684, 0x614ede2b, 0x812ff723, 0x299e1513, 0x4d3aadc2
-            ],
-            m: PhantomData,
-            encoding: PhantomData,
-        },
-        Elem {
-            limbs: p384_limbs![
-                0x4b03a4fe, 0x23043dad, 0x7bb4a9ac, 0xa1bfa8bf, 0x2e83b050, 0x8bade756, 0x68f4ffd9,
-                0xc6c35219, 0x3969a840, 0xdd800226, 0x5a15c5e9, 0x2b78abc2
-            ],
-            m: PhantomData,
-            encoding: PhantomData,
-        },
-    );
-
     PRIVATE_KEY_OPS.point_mul(a, &P384_GENERATOR)
 }
 
