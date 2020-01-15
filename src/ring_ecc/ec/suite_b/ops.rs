@@ -40,7 +40,7 @@ pub struct Point {
     // `ops.num_limbs` elements are the Y coordinate, and the next
     // `ops.num_limbs` elements are the Z coordinate. This layout is dictated
     // by the requirements of the GFp_nistz256 code.
-    xyz: [Limb; 3 * MAX_LIMBS],
+    pub xyz: [Limb; 3 * MAX_LIMBS],
 }
 
 impl Point {
@@ -1249,6 +1249,6 @@ macro_rules! bench_curve {
     };
 }
 
-mod elem;
+pub mod elem;
 pub mod p256;
 pub mod p384;

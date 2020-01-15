@@ -27,14 +27,14 @@ extern crate std;
 /// provide a dangerous side channel, and/or (c) it greatly simplifies the
 /// error handling logic.
 ///
-/// `Result<T, ring::ring_ecc::error::Unspecified>` is mostly equivalent to
-/// `Result<T, ()>`. However, `ring::ring_ecc::error::Unspecified` implements
+/// `Result<T, ecc_rs::ring_ecc::error::Unspecified>` is mostly equivalent to
+/// `Result<T, ()>`. However, `ecc_rs::ring_ecc::error::Unspecified` implements
 /// [`std::error::Error`] and users of *ring* can implement
-/// `From<ring::ring_ecc::error::Unspecified>` to map this to their own error types, as
+/// `From<ecc_rs::ring_ecc::error::Unspecified>` to map this to their own error types, as
 /// described in [“Error Handling” in the Rust Book]:
 ///
 /// ```
-/// use ring::ring_ecc::rand::{self, SecureRandom};
+/// use ecc_rs::ring_ecc::rand::{self, SecureRandom};
 ///
 /// enum Error {
 ///     CryptoError,
@@ -44,15 +44,15 @@ extern crate std;
 ///     // [...]
 /// }
 ///
-/// impl From<ring::ring_ecc::error::Unspecified> for Error {
-///     fn from(_: ring::ring_ecc::error::Unspecified) -> Self { Error::CryptoError }
+/// impl From<ecc_rs::ring_ecc::error::Unspecified> for Error {
+///     fn from(_: ecc_rs::ring_ecc::error::Unspecified) -> Self { Error::CryptoError }
 /// }
 ///
 /// fn eight_random_bytes() -> Result<[u8; 8], Error> {
 ///     let rng = rand::SystemRandom::new();
 ///     let mut bytes = [0; 8];
 ///
-///     // The `From<ring::ring_ecc::error::Unspecified>` implementation above makes this
+///     // The `From<ecc_rs::ring_ecc::error::Unspecified>` implementation above makes this
 ///     // equivalent to
 ///     // `rng.fill(&mut bytes).map_err(|_| Error::CryptoError)?`.
 ///     rng.fill(&mut bytes)?;
@@ -80,7 +80,7 @@ pub struct Unspecified;
 
 impl Unspecified {
     fn description_() -> &'static str {
-        "ring::ring_ecc::error::Unspecified"
+        "ecc_rs::ring_ecc::error::Unspecified"
     }
 }
 

@@ -154,7 +154,7 @@ fn verify_affine_point_is_on_the_curve_scaled(
 }
 
 pub mod curve;
-mod ops;
+pub mod ops;
 
 mod private_key;
 mod public_key;
