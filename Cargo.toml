@@ -1,12 +1,31 @@
 [package]
-name = "ecc-ring"
-version = "0.0.1"
 authors = ["Alex Davidson <coela@alxdavids.xyz>"]
+build = "build.rs"
+categories = ["cryptography", "no-std"]
+description = "Safe, fast, small crypto using Rust."
+documentation = "https://briansmith.org/rustdoc/ring/"
 edition = "2018"
+keywords = ["crypto", "cryptography", "rand", "ECC", "RSA"]
+license-file = "LICENSE"
+name = "ecc-ring"
+readme = "doc/link-to-readme.md"
+repository = "https://github.com/alxdavids/ring-ecc"
+version = "0.0.1"
 
+# Prevent multiple versions of *ring* from being linked into the same program.
+links = "ring-asm"
+
+exclude = [
+    # The presence of .gitignore is used to differentiate non-packaged builds
+    # from packaged builds in build.rs.
+    ".gitignore",
+    "pregenerated/tmp",
+]
 include = [
     "LICENSE",
     "Cargo.toml",
+
+    "pregenerated/*",
 
     "build.rs",
 
@@ -87,6 +106,24 @@ include = [
     "include/GFp/cpu.h",
     "include/GFp/mem.h",
     "include/GFp/type_check.h",
+    "src/aead.rs",
+    "src/aead/aes.rs",
+    "src/aead/aes_gcm.rs",
+    "src/aead/aes_tests.txt",
+    "src/aead/block.rs",
+    "src/aead/chacha.rs",
+    "src/aead/chacha_tests.txt",
+    "src/aead/chacha20_poly1305.rs",
+    "src/aead/chacha20_poly1305_openssh.rs",
+    "src/aead/gcm.rs",
+    "src/aead/nonce.rs",
+    "src/aead/poly1305.rs",
+    "src/aead/poly1305_test.txt",
+    "src/aead/quic.rs",
+    "src/aead/shift.rs",
+    "src/agreement.rs",
+    "src/arithmetic.rs",
+    "src/arithmetic/bigint.rs",
     "src/arithmetic/bigint_elem_exp_consttime_tests.txt",
     "src/arithmetic/bigint_elem_exp_vartime_tests.txt",
     "src/arithmetic/bigint_elem_mul_tests.txt",
