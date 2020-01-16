@@ -34,7 +34,7 @@ pub struct Curve {
 
 derive_debug_via_id!(Curve);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CurveID {
     Curve25519,
     P256,

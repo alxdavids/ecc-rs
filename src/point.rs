@@ -1,9 +1,66 @@
+/// The point module provides the main interface for performing elliptic curve
+/// operations. Currently we only support the `secp256r1` and `secp384r1` curves,
+/// both of which are implemented in the `suite_b` module of ring.
+///
+/// # Examples
+///
+/// Performing operations on elliptic curve points is as easy as running:
+///
+/// ```
+/// use ecc_rs::point::*;
+/// use num::{BigUint,One};
+///
+/// // get new zero point
+/// let _ = AffinePoint::new(P256);
+///
+/// // get generator point
+/// let g = AffinePoint::get_generator(P256);
+///
+/// // perform scalar mult
+/// let k = BigUint::parse_bytes(b"0a", 16).unwrap();
+/// let k_g = g.scalar_mul(&k);
+///
+/// // add points
+/// let k_1_g = g.to_jacobian().add(&k_g).to_affine();
+///
+/// // check point is valid
+/// assert_eq!(k_1_g.is_valid(), true);
+///
+/// // check points are equal
+/// let k_1 = BigUint::parse_bytes(b"0b", 16).unwrap();
+/// let k_1_chk_g = g.scalar_mul(&k_1).to_affine();
+/// assert_eq!(k_1_g.equals(k_1_chk_g), true);
+/// ```
+///
+/// We can also create operate over Jacobian points:
+///
+/// ```
+/// use ecc_rs::point::*;
+/// use num::{BigUint,One};
+///
+/// // get generator point
+/// let g = AffinePoint::get_generator(P256);
+/// let g_jac = AffinePoint::get_generator(P256).to_jacobian();
+///
+/// // add points
+/// let two_g = g_jac.add(&g_jac);
+///
+/// // check point is valid
+/// assert_eq!(two_g.is_valid(), true);
+///
+/// // check points are equal
+/// let two_sc = BigUint::parse_bytes(b"2", 16).unwrap();
+/// let two_sc_g = g.scalar_mul(&two_sc);
+/// assert_eq!(two_g.equals(two_sc_g), true);
+/// ```
+
 use num::{BigUint,Zero,One};
 use untrusted;
 use core::marker::PhantomData;
 
 use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
+use ring_ecc::ec::suite_b::verify_affine_point_is_on_the_curve;
 use ring_ecc::ec::suite_b::ops::Point as RingPoint;
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveAuxOps;
 use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
@@ -18,8 +75,16 @@ use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::ops::{elem_parse_big_endian_fixed_consttime,scalar_parse_big_endian_fixed_consttime};
 use ring_ecc::arithmetic::montgomery::R;
 
-/// The AffinePoint struct
-struct AffinePoint {
+/// P256 constant for exposing ring CurveID::P256 enum
+pub const P256: CurveID = CurveID::P256;
+/// P384 constant for exposing ring CurveID::P384 enum
+pub const P384: CurveID = CurveID::P384;
+
+/// The `AffinePoint` struct provides access to a base elliptic curve point
+/// representation. The setting of `id`, `curve_params` and `aux` determine
+/// which curve the point is associated with. Currently we support `secp256r1`
+/// and `secp384r1` as this is what is supported in ring.
+pub struct AffinePoint {
     x: BigUint,
     y: BigUint,
     id: CurveID,
@@ -31,17 +96,17 @@ impl AffinePoint {
     /// Returns the identity point
     pub fn new(id: CurveID) -> Self {
         match id {
-            CurveID::P256 => Self {
+            P256 => Self {
                 x: Zero::zero(),
                 y: Zero::zero(),
-                id: CurveID::P256,
+                id: P256,
                 curve_params: &P256_COMMON_OPS,
                 aux: &P256_AUX_OPS,
             },
-            CurveID::P384 => Self {
+            P384 => Self {
                 x: Zero::zero(),
                 y: Zero::zero(),
-                id: CurveID::P384,
+                id: P384,
                 curve_params: &P384_COMMON_OPS,
                 aux: &P384_AUX_OPS,
             },
@@ -51,25 +116,25 @@ impl AffinePoint {
 
     pub fn get_generator(id: CurveID) -> Self {
         match id {
-            CurveID::P256 => Self {
+            P256 => Self {
                 // ring doesn't explicitly make the P256 generator available,
                 // but some applications need it. we use the one in
                 // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt because it
                 // differs from the standard generator
                 x: BigUint::parse_bytes(b"18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c", 16).unwrap(),
                 y: BigUint::parse_bytes(b"8571ff1825885d85d2e88688dd21f3258b4ab8e4ba19e45cddf25357ce95560a", 16).unwrap(),
-                id: CurveID::P256,
+                id: P256,
                 curve_params: &P256_COMMON_OPS,
                 aux: &P256_AUX_OPS,
             },
-            CurveID::P384 => {
+            P384 => {
                 // for some reason the ring generator does not agree with
                 // https://www.secg.org/SEC2-Ver-1.0.pdf Section 2.8.1. using
                 // the ring point for now
                 Self {
-                    x: elem_to_big_uint(&P384_COMMON_OPS, P384_GENERATOR.0),
-                    y: elem_to_big_uint(&P384_COMMON_OPS, P384_GENERATOR.1),
-                    id: CurveID::P384,
+                    x: elem_to_biguint(P384_GENERATOR.0),
+                    y: elem_to_biguint(P384_GENERATOR.1),
+                    id: P384,
                     curve_params: &P384_COMMON_OPS,
                     aux: &P384_AUX_OPS,
                 }
@@ -78,15 +143,41 @@ impl AffinePoint {
         }
     }
 
-    pub fn base_mul(id: CurveID, scalar: &Scalar) -> JacobianPoint {
+    pub fn base_mul(id: CurveID, scalar: &BigUint) -> JacobianPoint {
         AffinePoint::get_generator(id).scalar_mul(scalar)
     }
 
-    pub fn scalar_mul(&self, scalar: &Scalar) -> JacobianPoint {
-        let x_elem = big_uint_to_elem(self.curve_params, &self.x);
-        let y_elem = big_uint_to_elem(self.curve_params, &self.y);
-        let ring_pt = self.aux.point_mul(scalar, &(x_elem, y_elem));
+    pub fn scalar_mul(&self, scalar: &BigUint) -> JacobianPoint {
+        let ring_sc = biguint_to_scalar(self.curve_params, scalar);
+        let x_elem = biguint_to_elem(self.curve_params, &self.x);
+        let y_elem = biguint_to_elem(self.curve_params, &self.y);
+        let ring_pt = self.aux.point_mul(&ring_sc, &(x_elem, y_elem));
         JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.curve_params, self.aux)
+    }
+
+    pub fn equals(&self, other: Self) -> bool {
+        (self.x == other.x)
+        && (self.y == other.y)
+        && (self.id == other.id)
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let (x, y) = self.as_ring_affine_point();
+        match verify_affine_point_is_on_the_curve(self.curve_params, (&x, &y)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
+    /// returns the point with y = -y
+    pub fn get_minus_y_point(&self) -> AffinePoint {
+        AffinePoint {
+            x: self.x.clone(),
+            y: self.get_curve_modulus_as_biguint() - &self.y,
+            id: self.id,
+            curve_params: self.curve_params,
+            aux: self.aux
+        }
     }
 
     /// to jacobian
@@ -101,28 +192,21 @@ impl AffinePoint {
         }
     }
 
-    fn get_curve_modulus_as_big_uint(&self) -> BigUint {
+    fn as_ring_affine_point(&self) -> (Elem<R>, Elem<R>) {
+        (biguint_to_elem(self.curve_params, &self.x), biguint_to_elem(self.curve_params, &self.y))
+    }
+
+    fn get_curve_modulus_as_biguint(&self) -> BigUint {
         let p = Elem {
             limbs: self.curve_params.q.p,
             m: PhantomData,
             encoding: PhantomData
         };
-        elem_to_big_uint(self.curve_params, p)
-    }
-
-    /// returns the point with y = -y
-    pub fn get_minus_y_point(&self) -> AffinePoint {
-        AffinePoint {
-            x: self.x.clone(),
-            y: self.get_curve_modulus_as_big_uint() - &self.y,
-            id: self.id,
-            curve_params: self.curve_params,
-            aux: self.aux
-        }
+        elem_to_biguint( p)
     }
 }
 
-struct JacobianPoint {
+pub struct JacobianPoint {
     x: BigUint,
     y: BigUint,
     z: BigUint,
@@ -135,17 +219,17 @@ impl JacobianPoint {
     /// Returns the identity point
     pub fn new(id: CurveID) -> Self {
         match id {
-            CurveID::P256 => AffinePoint {
+            P256 => AffinePoint {
                 x: Zero::zero(),
                 y: Zero::zero(),
-                id: CurveID::P256,
+                id: P256,
                 curve_params: &P256_COMMON_OPS,
                 aux: &P256_AUX_OPS,
             },
-            CurveID::P384 => AffinePoint {
+            P384 => AffinePoint {
                 x: Zero::zero(),
                 y: Zero::zero(),
-                id: CurveID::P384,
+                id: P384,
                 curve_params: &P384_COMMON_OPS,
                 aux: &P384_AUX_OPS,
             },
@@ -160,9 +244,20 @@ impl JacobianPoint {
         Self::from_ring_jac_point(p_add, self.id, self.curve_params, self.aux)
     }
 
+    pub fn equals(&self, other: Self) -> bool {
+        (self.x == other.x)
+        && (self.y == other.y)
+        && (self.z == other.z)
+        && (self.id == other.id)
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.to_affine().is_valid()
+    }
+
     pub fn to_affine(&self) -> AffinePoint {
         let ops = self.curve_params;
-        let z = big_uint_to_elem(ops, &self.z);
+        let z = biguint_to_elem(ops, &self.z);
 
         // compute z^{-2}
         let z_inv_sq = self.aux.elem_inverse_squared(&z);
@@ -173,17 +268,17 @@ impl JacobianPoint {
         ops.elem_mul(&mut z_inv_cub, &z);
 
         // compute x*z^{-2}
-        let mut x_aff = big_uint_to_elem(ops, &self.x);
+        let mut x_aff = biguint_to_elem(ops, &self.x);
         ops.elem_mul(&mut x_aff, &z_inv_sq);
 
         // compute y*z^{-3}
-        let mut y_aff = big_uint_to_elem(ops, &self.y);
+        let mut y_aff = biguint_to_elem(ops, &self.y);
         ops.elem_mul(&mut y_aff, &z_inv_cub);
 
         // output affine
         AffinePoint {
-            x: elem_to_big_uint(ops, x_aff),
-            y: elem_to_big_uint(ops, y_aff),
+            x: elem_to_biguint(x_aff),
+            y: elem_to_biguint(y_aff),
             id: self.id,
             curve_params: ops,
             aux: self.aux
@@ -200,9 +295,9 @@ impl JacobianPoint {
     }
 
     fn from_ring_jac_point(ring_pt: RingPoint, id: CurveID, ops: &'static CommonOps, aux: &'static CurveAuxOps) -> Self {
-        let x = elem_to_big_uint(ops, ops.point_x(&ring_pt));
-        let y = elem_to_big_uint(ops, ops.point_y(&ring_pt));
-        let z = elem_to_big_uint(ops, ops.point_z(&ring_pt));
+        let x = elem_to_biguint(ops.point_x(&ring_pt));
+        let y = elem_to_biguint(ops.point_y(&ring_pt));
+        let z = elem_to_biguint(ops.point_z(&ring_pt));
         Self {
             x: x,
             y: y,
@@ -216,13 +311,14 @@ impl JacobianPoint {
     /// encodes the fields of the point
     fn encode_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
         (
-            big_uint_to_elem(self.curve_params, &self.x),
-            big_uint_to_elem(self.curve_params, &self.y),
-            big_uint_to_elem(self.curve_params, &self.z),
+            biguint_to_elem(self.curve_params, &self.x),
+            biguint_to_elem(self.curve_params, &self.y),
+            biguint_to_elem(self.curve_params, &self.z),
         )
     }
 }
 
+#[allow(dead_code)]
 fn biguint_to_scalar(curve_params: &CommonOps, x: &BigUint) -> Scalar {
     let x_bytes = x.to_bytes_be();
     let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
@@ -231,7 +327,7 @@ fn biguint_to_scalar(curve_params: &CommonOps, x: &BigUint) -> Scalar {
     scalar_parse_big_endian_fixed_consttime(curve_params, untrusted::Input::from(&inp)).unwrap()
 }
 
-fn big_uint_to_elem(curve_params: &CommonOps, x: &BigUint) -> Elem<R> {
+fn biguint_to_elem(curve_params: &CommonOps, x: &BigUint) -> Elem<R> {
     let x_bytes = x.to_bytes_be();
     let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
     let mut inp = vec![0; MAX_LEN];
@@ -239,8 +335,8 @@ fn big_uint_to_elem(curve_params: &CommonOps, x: &BigUint) -> Elem<R> {
     bytes_to_elem(curve_params, &inp)
 }
 
-fn elem_to_big_uint(ops: &'static CommonOps, elem: Elem<R>) -> BigUint {
-    BigUint::from_bytes_be(&elem_to_bytes(ops, elem))
+fn elem_to_biguint(elem: Elem<R>) -> BigUint {
+    BigUint::from_bytes_be(&elem_to_bytes(elem))
 }
 
 /// parses an elem from be_bytes
@@ -253,7 +349,7 @@ fn bytes_to_elem(curve_params: &CommonOps, bytes: &[u8]) -> Elem<R> {
 }
 
 /// transform elem to be_bytes
-fn elem_to_bytes(ops: &CommonOps, elem: Elem<R>) -> Vec<u8> {
+fn elem_to_bytes(elem: Elem<R>) -> Vec<u8> {
     let mut out: Vec<u8> = vec![0; MAX_LIMBS*LIMB_BYTES];
     big_endian_from_limbs(&elem.limbs, &mut out);
     out
@@ -268,8 +364,8 @@ mod tests {
     fn scalar_mul_test() {
         for i in 0..2 {
             let gen = match i {
-                0 => AffinePoint::get_generator(CurveID::P256),
-                1 => AffinePoint::get_generator(CurveID::P384),
+                0 => AffinePoint::get_generator(P256),
+                1 => AffinePoint::get_generator(P384),
                 _ => panic!("test failed")
             };
 
@@ -277,7 +373,7 @@ mod tests {
             // with the minus y coordinate
             let test_gen = gen.get_minus_y_point();
             for vector in MULT_TEST_VECTORS[i].iter() {
-                let k = biguint_to_scalar(test_gen.curve_params, &BigUint::parse_bytes(vector[0].as_bytes(), 16).unwrap());
+                let k = BigUint::parse_bytes(vector[0].as_bytes(), 16).unwrap();
                 let aff = test_gen.scalar_mul(&k).to_affine();
 
                 // hex encode padding 0's (to_str_radix doesn't do this)
@@ -295,8 +391,8 @@ mod tests {
         for i in 0..2 {
             // TODO use generators
             let (ops, aux, id) = match i {
-                0 => (&P256_COMMON_OPS, &P256_AUX_OPS, CurveID::P256),
-                1 => (&P384_COMMON_OPS, &P384_AUX_OPS, CurveID::P384),
+                0 => (&P256_COMMON_OPS, &P256_AUX_OPS, P256),
+                1 => (&P384_COMMON_OPS, &P384_AUX_OPS, P384),
                 _ => panic!("test failed")
             };
             let vectors = ADD_TEST_VECTORS[i];
@@ -322,6 +418,7 @@ mod tests {
                 let x_hex = hex::encode(aff.x.to_bytes_be());
                 let y_hex = hex::encode(aff.y.to_bytes_be());
 
+                assert_eq!(aff.is_valid(), true);
                 assert_eq!(x_hex, vectors[j][2][0], "x hex coordinate check for addition curve: {:?} and j: {}", id, j);
                 assert_eq!(y_hex, vectors[j][2][1], "x hex coordinate check for addition curve: {:?} and j: {}", id, j);
             }

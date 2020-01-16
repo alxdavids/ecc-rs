@@ -29,7 +29,7 @@ use crate::ring_ecc::{arithmetic::montgomery::*, error, limb::LimbMask};
 //
 //     y**2 == (x**2 + a)*x + b  (mod q)
 //
-fn verify_affine_point_is_on_the_curve(
+pub fn verify_affine_point_is_on_the_curve(
     ops: &CommonOps,
     (x, y): (&Elem<R>, &Elem<R>),
 ) -> Result<(), error::Unspecified> {
@@ -45,7 +45,7 @@ fn verify_affine_point_is_on_the_curve(
 // verification.
 //
 // This function also verifies that the point is not at infinity.
-fn verify_jacobian_point_is_on_the_curve(
+pub fn verify_jacobian_point_is_on_the_curve(
     ops: &CommonOps,
     p: &Point,
 ) -> Result<Elem<R>, error::Unspecified> {
