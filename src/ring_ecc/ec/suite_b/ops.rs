@@ -60,7 +60,7 @@ static ONE: Elem<Unencoded> = Elem {
 /// Operations and values needed by all curve operations.
 pub struct CommonOps {
     pub num_limbs: usize,
-    q: Modulus,
+    pub q: Modulus,
     pub n: Elem<Unencoded>,
 
     pub a: Elem<R>, // Must be -3 mod q
@@ -132,6 +132,7 @@ impl CommonOps {
 
     pub fn point_sum(&self, a: &Point, b: &Point) -> Point {
         let mut r = Point::new_at_infinity();
+        // println!("a.xyz: {:?},\nb.xyz: {:?}", a.xyz, b.xyz);
         unsafe {
             (self.point_add_jacobian_impl)(r.xyz.as_mut_ptr(), a.xyz.as_ptr(), b.xyz.as_ptr())
         }
@@ -158,8 +159,8 @@ impl CommonOps {
     }
 }
 
-struct Modulus {
-    p: [Limb; MAX_LIMBS],
+pub struct Modulus {
+    pub p: [Limb; MAX_LIMBS],
     rr: [Limb; MAX_LIMBS],
 }
 

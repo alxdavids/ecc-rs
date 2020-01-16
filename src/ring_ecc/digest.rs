@@ -114,22 +114,6 @@ impl BlockContext {
 }
 
 /// A context for multi-step (Init-Update-Finish) digest calculations.
-///
-/// # Examples
-///
-/// ```
-/// use ecc_rs::ring_ecc::digest;
-///
-/// let one_shot = digest::digest(&digest::SHA384, b"hello, world");
-///
-/// let mut ctx = digest::Context::new(&digest::SHA384);
-/// ctx.update(b"hello");
-/// ctx.update(b", ");
-/// ctx.update(b"world");
-/// let multi_part = ctx.finish();
-///
-/// assert_eq!(&one_shot.as_ref(), &multi_part.as_ref());
-/// ```
 #[derive(Clone)]
 pub struct Context {
     block: BlockContext,
@@ -203,20 +187,6 @@ impl Context {
 }
 
 /// Returns the digest of `data` using the given digest algorithm.
-///
-/// # Examples:
-///
-/// ```
-/// # #[cfg(feature = "alloc")]
-/// # {
-/// use ecc_rs::ring_ecc::{digest, test};
-/// let expected_hex = "09ca7e4eaa6e8ae9c7d261167129184883644d07dfba7cbfbc4c8a2e08360d5b";
-/// let expected: Vec<u8> = test::from_hex(expected_hex).unwrap();
-/// let actual = digest::digest(&digest::SHA256, b"hello, world");
-///
-/// assert_eq!(&expected, &actual.as_ref());
-/// # }
-/// ```
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let mut ctx = Context::new(algorithm);
     ctx.update(data);

@@ -26,5 +26,5 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod ring_ecc;
+mod ring_ecc;
 pub mod point;
