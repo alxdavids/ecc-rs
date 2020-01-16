@@ -178,14 +178,7 @@ impl AffinePoint {
 
     /// to jacobian
     pub fn to_jacobian(&self) -> JacobianPoint {
-        JacobianPoint {
-            x: self.x.clone(),
-            y: self.y.clone(),
-            z: One::one(),
-            id: self.id,
-            curve_params: self.curve_params,
-            aux: self.aux
-        }
+        self.scalar_mul(&BigUint::from(1_u64))
     }
 
     fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
@@ -452,16 +445,12 @@ mod tests {
     fn point_conversion() {
         let jac = AffinePoint::base_mul(P256, &BigUint::from(1_u64)).to_affine();
         let gen = AffinePoint::get_generator(P256);
+        let gen_direct = AffinePoint::get_generator(P256).to_jacobian().to_affine();
         let gen_conv = gen.to_jacobian().to_affine();
-        println!("jac.x: {:?}", jac.x);
-        println!("jac.y: {:?}", jac.y);
-        println!("gen.x: {:?}", gen.x);
-        println!("gen.y: {:?}", gen.y);
-        println!("gen_conv.x: {:?}", gen_conv.x);
-        println!("gen_conv.y: {:?}", gen_conv.y);
-        let valid = jac.is_valid();
-        assert_eq!(valid, true);
+        assert_eq!(jac.is_valid(), true);
         assert_eq!(gen.is_valid(), true);
+        assert_eq!(gen_conv.is_valid(), true);
+        assert_eq!(gen_direct.is_valid(), true);
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/
