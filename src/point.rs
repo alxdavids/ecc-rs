@@ -44,18 +44,11 @@
 ///
 /// Conversion between affine and jacobian points is also simple:
 ///
-/// ```
-/// use ecc_rs::point::*;
-/// let aff = AffinePoint::get_generator(P256);
-/// let jac = aff.to_jacobian();
-/// assert_eq!(jac.is_valid(), true);
-/// let chk_aff = jac.to_affine();
-/// assert_eq!(aff.equals(chk_aff), true);
-/// ```
 
 use num::{BigUint,Zero,One};
 use untrusted;
 use core::marker::PhantomData;
+use hex;
 
 use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
@@ -72,6 +65,7 @@ use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::limb::big_endian_from_limbs;
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::ops::{elem_parse_big_endian_fixed_consttime,scalar_parse_big_endian_fixed_consttime};
+use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
 
 /// P256 constant for exposing ring CurveID::P256 enum
@@ -164,7 +158,7 @@ impl AffinePoint {
     }
 
     pub fn is_valid(&self) -> bool {
-        let (x, y) = self.as_ring_affine_point();
+        let (x, y) = self.as_ring_affine();
         match verify_affine_point_is_on_the_curve(self.curve_params, (&x, &y)) {
             Ok(_) => true,
             Err(_) => false,
@@ -194,8 +188,15 @@ impl AffinePoint {
         }
     }
 
-    fn as_ring_affine_point(&self) -> (Elem<R>, Elem<R>) {
+    fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
         (biguint_to_elem(self.curve_params, &self.x), biguint_to_elem(self.curve_params, &self.y))
+    }
+
+    fn from_ring_affine(pt: (Elem<R>, Elem<R>), id: CurveID) -> Self {
+        let mut aff = Self::new(id);
+        aff.x = elem_to_biguint(pt.0);
+        aff.y = elem_to_biguint(pt.1);
+        aff
     }
 
     fn get_curve_modulus_as_biguint(&self) -> BigUint {
@@ -262,28 +263,35 @@ impl JacobianPoint {
         let z = biguint_to_elem(ops, &self.z);
 
         // compute z^{-2}
-        let z_inv_sq = self.aux.elem_inverse_squared(&z);
+        // println!("z: {:?}", z.limbs);
+        let z_sq = ops.elem_squared(&z);
+        let z_inv_2 = self.aux.elem_inverse_squared(&z);
+        let z_id = ops.elem_product(&z_sq, &z_inv_2);
+        // println!("zz: {:?}", z_sq.limbs);
+        // println!("zz_zz: {:?}", z_id.limbs);
+        // println!("_zz: {:?}", z_inv_2.limbs);
+        let id = ops.elem_product(&z, &z_id);
+        // println!("z(zz_zz): {:?}", id.limbs);
+        let z_again = ops.elem_product(&z, &id);
+        // println!("z(z(zz_zz)): {:?}", z_again.limbs);
 
         // compute z^{-3}
-        let mut z_inv_cub = z_inv_sq.clone();
-        ops.elem_mul(&mut z_inv_cub, &z_inv_sq);
-        ops.elem_mul(&mut z_inv_cub, &z);
+        let z_inv_4 = ops.elem_squared(&z_inv_2); // z^{-4}
+        let z_inv_3 = ops.elem_product(&z_inv_4, &z); // z^{-3}
 
         // compute x*z^{-2}
-        let mut x_aff = biguint_to_elem(ops, &self.x);
-        ops.elem_mul(&mut x_aff, &z_inv_sq);
+        let x_aff = biguint_to_elem(ops, &self.x);
+        let x_z_inv_2 = ops.elem_product(&x_aff, &z_inv_2);
 
         // compute y*z^{-3}
-        let mut y_aff = biguint_to_elem(ops, &self.y);
-        ops.elem_mul(&mut y_aff, &z_inv_cub);
-
-        // output affine
+        let y_aff = biguint_to_elem(ops, &self.y);
+        let y_z_inv_3 = ops.elem_product(&y_aff, &z_inv_3);
         AffinePoint {
-            x: elem_to_biguint(x_aff),
-            y: elem_to_biguint(y_aff),
+            x: elem_to_biguint(x_z_inv_2),
+            y: elem_to_biguint(y_z_inv_3),
             id: self.id,
             curve_params: ops,
-            aux: self.aux
+            aux: self.aux,
         }
     }
 
@@ -438,6 +446,22 @@ mod tests {
             assert_eq!(k_base.is_valid(), true);
             assert_eq!(k_g.equals(k_base), true);
         }
+    }
+
+    #[test]
+    fn point_conversion() {
+        let jac = AffinePoint::base_mul(P256, &BigUint::from(1_u64)).to_affine();
+        let gen = AffinePoint::get_generator(P256);
+        let gen_conv = gen.to_jacobian().to_affine();
+        println!("jac.x: {:?}", jac.x);
+        println!("jac.y: {:?}", jac.y);
+        println!("gen.x: {:?}", gen.x);
+        println!("gen.y: {:?}", gen.y);
+        println!("gen_conv.x: {:?}", gen_conv.x);
+        println!("gen_conv.y: {:?}", gen_conv.y);
+        let valid = jac.is_valid();
+        assert_eq!(valid, true);
+        assert_eq!(gen.is_valid(), true);
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/

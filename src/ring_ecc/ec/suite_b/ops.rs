@@ -51,7 +51,7 @@ impl Point {
     }
 }
 
-static ONE: Elem<Unencoded> = Elem {
+pub static ONE: Elem<Unencoded> = Elem {
     limbs: limbs![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     m: PhantomData,
     encoding: PhantomData,
@@ -132,7 +132,6 @@ impl CommonOps {
 
     pub fn point_sum(&self, a: &Point, b: &Point) -> Point {
         let mut r = Point::new_at_infinity();
-        // println!("a.xyz: {:?},\nb.xyz: {:?}", a.xyz, b.xyz);
         unsafe {
             (self.point_add_jacobian_impl)(r.xyz.as_mut_ptr(), a.xyz.as_ptr(), b.xyz.as_ptr())
         }
