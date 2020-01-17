@@ -58,12 +58,10 @@ use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::ec::suite_b::verify_affine_point_is_on_the_curve;
 use ring_ecc::ec::suite_b::ops::Point as RingPoint;
-use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveAuxOps;
+use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
-use ring_ecc::ec::suite_b::ops::p256::COMMON_OPS as P256_COMMON_OPS;
-use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_AUX_OPS;
-use ring_ecc::ec::suite_b::ops::p384::COMMON_OPS as P384_COMMON_OPS;
-use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_AUX_OPS;
+use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
+use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
 use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::limb::big_endian_from_limbs;
@@ -82,17 +80,16 @@ pub enum Encoded {}
 pub enum Unencoded {}
 
 /// The `AffinePoint` struct provides access to a base elliptic curve point
-/// representation. The setting of `id`, `curve_params` and `aux` determine
-/// which curve the point is associated with. Currently we support `secp256r1`
-/// and `secp384r1` as this is what is supported in ring.
+/// representation. The setting of `id` and `ops` determine which curve the
+/// point is associated with. Currently we support `secp256r1` and `secp384r1`
+/// as this is what is supported in ring.
 ///
 /// TODO: use generic T for CurveID
 pub struct AffinePoint<T> {
     pub x: BigUint,
     pub y: BigUint,
     id: CurveID,
-    curve_params: &'static CommonOps,
-    aux: &'static CurveAuxOps,
+    ops: &'static CurveOps,
     encoding: PhantomData<T>,
 }
 
@@ -105,16 +102,14 @@ impl AffinePoint<Encoded> {
                 x: Zero::zero(),
                 y: Zero::zero(),
                 id: P256,
-                curve_params: &P256_COMMON_OPS,
-                aux: &P256_AUX_OPS,
+                ops: &P256_OPS,
                 encoding: PhantomData,
             },
             P384 => Self {
                 x: Zero::zero(),
                 y: Zero::zero(),
                 id: P384,
-                curve_params: &P384_COMMON_OPS,
-                aux: &P384_AUX_OPS,
+                ops: &P384_OPS,
                 encoding: PhantomData,
             },
             _ => panic!("unsupported"),
@@ -131,8 +126,7 @@ impl AffinePoint<Encoded> {
                 x: BigUint::parse_bytes(b"18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c", 16).unwrap(),
                 y: BigUint::parse_bytes(b"8571ff1825885d85d2e88688dd21f3258b4ab8e4ba19e45cddf25357ce95560a", 16).unwrap(),
                 id: P256,
-                curve_params: &P256_COMMON_OPS,
-                aux: &P256_AUX_OPS,
+                ops: &P256_OPS,
                 encoding: PhantomData,
             },
             P384 => {
@@ -143,8 +137,7 @@ impl AffinePoint<Encoded> {
                     x: elem_to_biguint(P384_GENERATOR.0),
                     y: elem_to_biguint(P384_GENERATOR.1),
                     id: P384,
-                    curve_params: &P384_COMMON_OPS,
-                    aux: &P384_AUX_OPS,
+                    ops: &P384_OPS,
                     encoding: PhantomData,
                 }
             },
@@ -157,11 +150,11 @@ impl AffinePoint<Encoded> {
     }
 
     pub fn scalar_mul(&self, scalar: &BigUint) -> JacobianPoint<Encoded> {
-        let ring_sc = biguint_to_scalar(self.curve_params, scalar);
-        let x_elem = biguint_to_elem(self.curve_params, &self.x);
-        let y_elem = biguint_to_elem(self.curve_params, &self.y);
-        let ring_pt = self.aux.point_mul(&ring_sc, &(x_elem, y_elem));
-        JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.curve_params, self.aux)
+        let ring_sc = biguint_to_scalar(self.ops.common, scalar);
+        let x_elem = biguint_to_elem(self.ops.common, &self.x);
+        let y_elem = biguint_to_elem(self.ops.common, &self.y);
+        let ring_pt = self.ops.point_mul(&ring_sc, &(x_elem, y_elem));
+        JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.ops)
     }
 
     pub fn equals(&self, other: Self) -> bool {
@@ -172,7 +165,7 @@ impl AffinePoint<Encoded> {
 
     pub fn is_valid(&self) -> bool {
         let (x, y) = self.as_ring_affine();
-        match verify_affine_point_is_on_the_curve(self.curve_params, (&x, &y)) {
+        match verify_affine_point_is_on_the_curve(self.ops.common, (&x, &y)) {
             Ok(_) => true,
             Err(_) => false,
         }
@@ -184,8 +177,7 @@ impl AffinePoint<Encoded> {
             x: self.x.clone(),
             y: self.get_curve_modulus_as_biguint() - &self.y,
             id: self.id,
-            curve_params: self.curve_params,
-            aux: self.aux,
+            ops: self.ops,
             encoding: PhantomData,
         }
     }
@@ -196,21 +188,20 @@ impl AffinePoint<Encoded> {
     }
 
     pub fn remove_encoding(&self) -> AffinePoint<Unencoded> {
-        let ops = self.curve_params;
+        let ops = self.ops.common;
         let (x_r, y_r) = self.as_ring_affine();
         let (x_unenc, y_unenc) = (ops.elem_unencoded(&x_r), ops.elem_unencoded(&y_r));
         AffinePoint {
             x: elem_to_biguint(x_unenc),
             y: elem_to_biguint(y_unenc),
             id: self.id,
-            curve_params: self.curve_params,
-            aux: self.aux,
+            ops: self.ops,
             encoding: PhantomData,
         }
     }
 
     fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
-        (biguint_to_elem(self.curve_params, &self.x), biguint_to_elem(self.curve_params, &self.y))
+        (biguint_to_elem(self.ops.common, &self.x), biguint_to_elem(self.ops.common, &self.y))
     }
 
     fn from_ring_affine(pt: (Elem<R>, Elem<R>), id: CurveID) -> Self {
@@ -222,7 +213,7 @@ impl AffinePoint<Encoded> {
 
     fn get_curve_modulus_as_biguint(&self) -> BigUint {
         let p: Elem<R> = Elem {
-            limbs: self.curve_params.q.p,
+            limbs: self.ops.common.q.p,
             m: PhantomData,
             encoding: PhantomData
         };
@@ -235,8 +226,7 @@ pub struct JacobianPoint<T> {
     y: BigUint,
     z: BigUint,
     id: CurveID,
-    curve_params: &'static CommonOps,
-    aux: &'static CurveAuxOps,
+    ops: &'static CurveOps,
     encoding: PhantomData<T>
 }
 
@@ -249,8 +239,8 @@ impl JacobianPoint<Encoded> {
     pub fn add(&self, other: &JacobianPoint<Encoded>) -> Self {
         let p1 = self.as_ring_jac_point();
         let p2 = other.as_ring_jac_point();
-        let p_add = self.curve_params.point_sum(&p1, &p2);
-        Self::from_ring_jac_point(p_add, self.id, self.curve_params, self.aux)
+        let p_add = self.ops.common.point_sum(&p1, &p2);
+        Self::from_ring_jac_point(p_add, self.id, self.ops)
     }
 
     pub fn equals(&self, other: Self) -> bool {
@@ -265,13 +255,12 @@ impl JacobianPoint<Encoded> {
     }
 
     pub fn to_affine(&self) -> AffinePoint<Encoded> {
-        let (x_ele, y_ele) = affine_from_jacobian(self.aux, &self.as_ring_jac_point()).unwrap();
+        let (x_ele, y_ele) = affine_from_jacobian(self.ops, &self.as_ring_jac_point()).unwrap();
         AffinePoint {
             x: elem_to_biguint(x_ele),
             y: elem_to_biguint(y_ele),
             id: self.id,
-            curve_params: self.curve_params,
-            aux: self.aux,
+            ops: self.ops,
             encoding: PhantomData
         }
     }
@@ -280,22 +269,21 @@ impl JacobianPoint<Encoded> {
         let (x, y, z) = self.encode_for_ring_ops();
         let mut limbs: [Limb; MAX_LIMBS*3] = [0; MAX_LIMBS*3];
         limbs[..MAX_LIMBS].copy_from_slice(&x.limbs);
-        limbs[self.curve_params.num_limbs..self.curve_params.num_limbs+MAX_LIMBS].copy_from_slice(&y.limbs);
-        limbs[self.curve_params.num_limbs*2..self.curve_params.num_limbs*2+MAX_LIMBS].copy_from_slice(&z.limbs);
+        limbs[self.ops.common.num_limbs..self.ops.common.num_limbs+MAX_LIMBS].copy_from_slice(&y.limbs);
+        limbs[self.ops.common.num_limbs*2..self.ops.common.num_limbs*2+MAX_LIMBS].copy_from_slice(&z.limbs);
         RingPoint { xyz: limbs }
     }
 
-    fn from_ring_jac_point(ring_pt: RingPoint, id: CurveID, ops: &'static CommonOps, aux: &'static CurveAuxOps) -> Self {
-        let x = elem_to_biguint(ops.point_x(&ring_pt));
-        let y = elem_to_biguint(ops.point_y(&ring_pt));
-        let z = elem_to_biguint(ops.point_z(&ring_pt));
+    fn from_ring_jac_point(ring_pt: RingPoint, id: CurveID, ops: &'static CurveOps) -> Self {
+        let x = elem_to_biguint(ops.common.point_x(&ring_pt));
+        let y = elem_to_biguint(ops.common.point_y(&ring_pt));
+        let z = elem_to_biguint(ops.common.point_z(&ring_pt));
         Self {
             x: x,
             y: y,
             z: z,
             id: id,
-            curve_params: ops,
-            aux: aux,
+            ops: ops,
             encoding: PhantomData
         }
     }
@@ -303,9 +291,9 @@ impl JacobianPoint<Encoded> {
     /// encodes the fields of the point
     fn encode_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
         (
-            biguint_to_elem(self.curve_params, &self.x),
-            biguint_to_elem(self.curve_params, &self.y),
-            biguint_to_elem(self.curve_params, &self.z),
+            biguint_to_elem(self.ops.common, &self.x),
+            biguint_to_elem(self.ops.common, &self.y),
+            biguint_to_elem(self.ops.common, &self.z),
         )
     }
 }
@@ -382,9 +370,9 @@ mod tests {
     fn add_test() {
         for i in 0..2 {
             // TODO use generators
-            let (ops, aux, id) = match i {
-                0 => (&P256_COMMON_OPS, &P256_AUX_OPS, P256),
-                1 => (&P384_COMMON_OPS, &P384_AUX_OPS, P384),
+            let (ops, id) = match i {
+                0 => (&P256_OPS, P256),
+                1 => (&P384_OPS, P384),
                 _ => panic!("test failed")
             };
             let vectors = ADD_TEST_VECTORS[i];
@@ -394,8 +382,7 @@ mod tests {
                     y: BigUint::parse_bytes(vectors[j][0][1].as_bytes(), 16).unwrap(),
                     z: BigUint::parse_bytes(vectors[j][0][2].as_bytes(), 16).unwrap(),
                     id: id,
-                    curve_params: ops,
-                    aux: aux,
+                    ops: ops,
                     encoding: PhantomData,
                 };
                 let pt_right: JacobianPoint<Encoded> = JacobianPoint {
@@ -403,8 +390,7 @@ mod tests {
                     y: BigUint::parse_bytes(vectors[j][1][1].as_bytes(), 16).unwrap(),
                     z: BigUint::parse_bytes(vectors[j][1][2].as_bytes(), 16).unwrap(),
                     id: id,
-                    curve_params: ops,
-                    aux: aux,
+                    ops: ops,
                     encoding: PhantomData,
                 };
 
