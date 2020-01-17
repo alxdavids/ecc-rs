@@ -30,25 +30,29 @@
 /// let k_1_g = g.to_jacobian().add(&k_g).to_affine();
 ///
 /// // check point is valid
-/// // println!("{}", hex::encode(k_1_g.x.to_bytes_be()));
-/// // println!("{}", hex::encode(k_1_g.y.to_bytes_be()));
 /// // assert_eq!(k_1_g.is_valid(), true);
 ///
 /// // check points are equal
 /// let k_1 = BigUint::parse_bytes(b"0b", 16).unwrap();
 /// let k_1_chk_g = g.scalar_mul(&k_1).to_affine();
-/// // println!("{}", hex::encode(k_1_chk_g.x.to_bytes_be()));
-/// // println!("{}", hex::encode(k_1_chk_g.y.to_bytes_be()));
 /// // assert_eq!(k_1_g.equals(k_1_chk_g), true);
 /// ```
 ///
 /// Conversion between affine and jacobian points is also simple:
 ///
+/// ```
+/// use ecc_rs::point::*;
+/// let gen = AffinePoint::get_generator(P256);
+/// let jac = gen.to_jacobian();
+/// let gen_conv = jac.to_affine();
+/// assert_eq!(gen.is_valid(), true);
+/// assert_eq!(gen_conv.is_valid(), true);
+/// assert_eq!(jac.is_valid(), true);
+/// ```
 
-use num::{BigUint,Zero,One};
+use num::{BigUint,Zero};
 use untrusted;
 use core::marker::PhantomData;
-use hex;
 
 use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
@@ -252,39 +256,13 @@ impl JacobianPoint {
     }
 
     pub fn to_affine(&self) -> AffinePoint {
-        let ops = self.curve_params;
-        let z = biguint_to_elem(ops, &self.z);
-
-        // compute z^{-2}
-        // println!("z: {:?}", z.limbs);
-        let z_sq = ops.elem_squared(&z);
-        let z_inv_2 = self.aux.elem_inverse_squared(&z);
-        let z_id = ops.elem_product(&z_sq, &z_inv_2);
-        // println!("zz: {:?}", z_sq.limbs);
-        // println!("zz_zz: {:?}", z_id.limbs);
-        // println!("_zz: {:?}", z_inv_2.limbs);
-        let id = ops.elem_product(&z, &z_id);
-        // println!("z(zz_zz): {:?}", id.limbs);
-        let z_again = ops.elem_product(&z, &id);
-        // println!("z(z(zz_zz)): {:?}", z_again.limbs);
-
-        // compute z^{-3}
-        let z_inv_4 = ops.elem_squared(&z_inv_2); // z^{-4}
-        let z_inv_3 = ops.elem_product(&z_inv_4, &z); // z^{-3}
-
-        // compute x*z^{-2}
-        let x_aff = biguint_to_elem(ops, &self.x);
-        let x_z_inv_2 = ops.elem_product(&x_aff, &z_inv_2);
-
-        // compute y*z^{-3}
-        let y_aff = biguint_to_elem(ops, &self.y);
-        let y_z_inv_3 = ops.elem_product(&y_aff, &z_inv_3);
+        let (x_ele, y_ele) = affine_from_jacobian(self.aux, &self.as_ring_jac_point()).unwrap();
         AffinePoint {
-            x: elem_to_biguint(x_z_inv_2),
-            y: elem_to_biguint(y_z_inv_3),
+            x: elem_to_biguint(x_ele),
+            y: elem_to_biguint(y_ele),
             id: self.id,
-            curve_params: ops,
-            aux: self.aux,
+            curve_params: self.curve_params,
+            aux: self.aux
         }
     }
 
@@ -443,14 +421,12 @@ mod tests {
 
     #[test]
     fn point_conversion() {
-        let jac = AffinePoint::base_mul(P256, &BigUint::from(1_u64)).to_affine();
         let gen = AffinePoint::get_generator(P256);
-        let gen_direct = AffinePoint::get_generator(P256).to_jacobian().to_affine();
-        let gen_conv = gen.to_jacobian().to_affine();
-        assert_eq!(jac.is_valid(), true);
+        let jac = gen.to_jacobian();
+        let gen_conv = jac.to_affine();
         assert_eq!(gen.is_valid(), true);
         assert_eq!(gen_conv.is_valid(), true);
-        assert_eq!(gen_direct.is_valid(), true);
+        assert_eq!(jac.is_valid(), true);
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/
