@@ -187,7 +187,7 @@ impl AffinePoint<Encoded> {
         self.scalar_mul(&BigUint::from(1_u64))
     }
 
-    pub fn remove_encoding(&self) -> AffinePoint<Unencoded> {
+    pub fn to_unencoded(&self) -> AffinePoint<Unencoded> {
         let ops = self.ops.common;
         let (x_r, y_r) = self.as_ring_affine();
         let (x_unenc, y_unenc) = (ops.elem_unencoded(&x_r), ops.elem_unencoded(&y_r));
@@ -218,6 +218,18 @@ impl AffinePoint<Encoded> {
             encoding: PhantomData
         };
         elem_to_biguint(p)
+    }
+}
+
+impl AffinePoint<Unencoded> {
+    pub fn to_encoded(&self) -> AffinePoint<Encoded> {
+        AffinePoint {
+            x: elem_to_biguint(biguint_to_elem(self.ops.common, &self.x)),
+            y: elem_to_biguint(biguint_to_elem(self.ops.common, &self.y)),
+            id: self.id,
+            ops: self.ops,
+            encoding: PhantomData,
+        }
     }
 }
 
@@ -400,7 +412,7 @@ mod tests {
 
                 assert_eq!(aff.is_valid(), true);
                 assert_eq!(x_hex, vectors[j][2][0], "x hex coordinate check for addition curve: {:?} and j: {}", id, j);
-                assert_eq!(y_hex, vectors[j][2][1], "x hex coordinate check for addition curve: {:?} and j: {}", id, j);
+                assert_eq!(y_hex, vectors[j][2][1], "y hex coordinate check for addition curve: {:?} and j: {}", id, j);
             }
         }
     }
