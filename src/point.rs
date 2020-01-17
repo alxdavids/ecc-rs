@@ -8,7 +8,7 @@
 ///
 /// ```
 /// use ecc_rs::point::*;
-/// use num::{BigUint,One};
+/// use num::BigUint;
 ///
 /// // get new zero point
 /// let _ = AffinePoint::new(P256);
@@ -62,6 +62,8 @@ use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
 use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
+use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
+use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
 use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::limb::big_endian_from_limbs;
@@ -70,6 +72,7 @@ use ring_ecc::ec::suite_b::ops::{elem_parse_big_endian_fixed_consttime,scalar_pa
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
+use ring_ecc::error::Unspecified;
 
 /// P256 constant for exposing ring CurveID::P256 enum
 pub const P256: CurveID = CurveID::P256;
@@ -84,7 +87,22 @@ pub enum Unencoded {}
 /// point is associated with. Currently we support `secp256r1` and `secp384r1`
 /// as this is what is supported in ring.
 ///
-/// TODO: use generic T for CurveID
+/// The `AffinePoint` object can either be in montgomery encoding (`T =
+/// Encoded`), or in unencoded (`T = Unencoded`) format. All operations are
+/// performed on points in montgomery encoding as this is how *ring* does it.
+/// Operations usually convert a point into Jacobian format, and `to_affine()`
+/// should be called to recover the affine point respresentation. Unencoded
+/// points are essentially private structs that are used when serializing and
+/// deserializing the points.
+///
+/// # Examples
+///
+/// The best way to recover an `AffinePoint` object is to get the generator for
+/// the requested curve (either `P256` or `P384`):
+/// ```
+/// use ecc_rs::point::*;
+/// let g = AffinePoint::get_generator(P256);
+/// ```
 pub struct AffinePoint<T> {
     pub x: BigUint,
     pub y: BigUint,
@@ -93,9 +111,9 @@ pub struct AffinePoint<T> {
     encoding: PhantomData<T>,
 }
 
-// TODO: implement operations natively
 impl AffinePoint<Encoded> {
-    /// Returns the identity point
+    /// Returns a zero point, this isn't really a valid point representation but
+    /// can be useful when constructing points via point addition
     pub fn new(id: CurveID) -> Self {
         match id {
             P256 => Self {
@@ -116,6 +134,8 @@ impl AffinePoint<Encoded> {
         }
     }
 
+    /// Returns the fixed generator of the group instantiated by the curve (in
+    /// montgomery encoding)
     pub fn get_generator(id: CurveID) -> Self {
         match id {
             P256 => Self {
@@ -145,10 +165,14 @@ impl AffinePoint<Encoded> {
         }
     }
 
+    /// Performs `k*G`, where `G` is the fixed generator of the group, and `k`
+    /// is the input scalar
     pub fn base_mul(id: CurveID, scalar: &BigUint) -> JacobianPoint<Encoded> {
         AffinePoint::get_generator(id).scalar_mul(scalar)
     }
 
+    /// Performs `k*P` where `P` is some point on the curve and `k` is the input
+    /// scalar
     pub fn scalar_mul(&self, scalar: &BigUint) -> JacobianPoint<Encoded> {
         let ring_sc = biguint_to_scalar(self.ops.common, scalar);
         let x_elem = biguint_to_elem(self.ops.common, &self.x);
@@ -157,12 +181,16 @@ impl AffinePoint<Encoded> {
         JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.ops)
     }
 
+    /// Returns `true` if the two points are equal (share the same coordiantes
+    /// and belong to the same curve), returns false otherwise
     pub fn equals(&self, other: Self) -> bool {
         (self.x == other.x)
         && (self.y == other.y)
         && (self.id == other.id)
     }
 
+    /// Returns `true` if the point satisfies the equation of the curve that it
+    /// belongs to, returning `false` otherwise
     pub fn is_valid(&self) -> bool {
         let (x, y) = self.as_ring_affine();
         match verify_affine_point_is_on_the_curve(self.ops.common, (&x, &y)) {
@@ -171,22 +199,16 @@ impl AffinePoint<Encoded> {
         }
     }
 
-    /// returns the point with y = -y
-    pub fn get_minus_y_point(&self) -> Self {
-        Self {
-            x: self.x.clone(),
-            y: self.get_curve_modulus_as_biguint() - &self.y,
-            id: self.id,
-            ops: self.ops,
-            encoding: PhantomData,
-        }
-    }
-
-    /// to jacobian
+    /// Converts the `AffinePoint` object into a `JacobianPoint` object (i.e.
+    /// representing it in jacobian coordinates)
+    ///
+    /// TODO: Do this in a less naive way
     pub fn to_jacobian(&self) -> JacobianPoint<Encoded> {
         self.scalar_mul(&BigUint::from(1_u64))
     }
 
+    /// Returns the `AffinePoint` object in unencoded format, removing the
+    /// montgomery encoding
     pub fn to_unencoded(&self) -> AffinePoint<Unencoded> {
         let ops = self.ops.common;
         let (x_r, y_r) = self.as_ring_affine();
@@ -200,10 +222,27 @@ impl AffinePoint<Encoded> {
         }
     }
 
+    /// Returns a new `AffinePoint` object (montgomery encoded) with self.y =
+    /// -y.
+    fn get_minus_y_point(&self) -> Self {
+        Self {
+            x: self.x.clone(),
+            y: self.get_curve_modulus_as_biguint() - &self.y,
+            id: self.id,
+            ops: self.ops,
+            encoding: PhantomData,
+        }
+    }
+
+    /// Returns the affine coordinates of the point in the format used by
+    /// *ring*. This is used when performing operations using the *ring*
+    /// internals
     fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
         (biguint_to_elem(self.ops.common, &self.x), biguint_to_elem(self.ops.common, &self.y))
     }
 
+    /// Converts the *ring* representation of coordinates back into the BigUint
+    /// representation
     fn from_ring_affine(pt: (Elem<R>, Elem<R>), id: CurveID) -> Self {
         let mut aff = Self::new(id);
         aff.x = elem_to_biguint(pt.0);
@@ -211,6 +250,8 @@ impl AffinePoint<Encoded> {
         aff
     }
 
+    /// Returns the curve modulus (montgomery encoded) for performing modular
+    /// operations
     fn get_curve_modulus_as_biguint(&self) -> BigUint {
         let p: Elem<R> = Elem {
             limbs: self.ops.common.q.p,
@@ -222,14 +263,32 @@ impl AffinePoint<Encoded> {
 }
 
 impl AffinePoint<Unencoded> {
+    /// Re-encodes the `AffinePoint` object in montgomery encoding, for
+    /// performing group operations.
     pub fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
-            x: elem_to_biguint(biguint_to_elem(self.ops.common, &self.x)),
-            y: elem_to_biguint(biguint_to_elem(self.ops.common, &self.y)),
+            x: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.x)),
+            y: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.y)),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
         }
+    }
+
+    /// Returns a BigUint coordinate as a montgomery encoded *ring* element
+    fn parse_coord_as_elems(id: CurveID, coord: &BigUint) -> Elem<R> {
+        let bytes = coord.to_bytes_be();
+        let input = untrusted::Input::from(&bytes);
+        // TODO: come up with better error type!!
+        input.read_all(Unspecified, |input| {
+            Ok(
+                match id {
+                    P256 => P256_PK_OPS.elem_parse(input).unwrap(),
+                    P384 => P384_PK_OPS.elem_parse(input).unwrap(),
+                    _ => panic!("blah")
+                }
+            )
+        }).unwrap()
     }
 }
 
@@ -278,7 +337,7 @@ impl JacobianPoint<Encoded> {
     }
 
     fn as_ring_jac_point(&self) -> RingPoint {
-        let (x, y, z) = self.encode_for_ring_ops();
+        let (x, y, z) = self.use_for_ring_ops();
         let mut limbs: [Limb; MAX_LIMBS*3] = [0; MAX_LIMBS*3];
         limbs[..MAX_LIMBS].copy_from_slice(&x.limbs);
         limbs[self.ops.common.num_limbs..self.ops.common.num_limbs+MAX_LIMBS].copy_from_slice(&y.limbs);
@@ -301,7 +360,7 @@ impl JacobianPoint<Encoded> {
     }
 
     /// encodes the fields of the point
-    fn encode_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
+    fn use_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
         (
             biguint_to_elem(self.ops.common, &self.x),
             biguint_to_elem(self.ops.common, &self.y),
@@ -419,25 +478,49 @@ mod tests {
 
     #[test]
     fn validity_test() {
-        let consts = [P256, P384];
         let k = BigUint::parse_bytes(b"0a", 16).unwrap();
-        for t in consts.iter() {
-            let k_base = AffinePoint::base_mul(*t, &k);
-            let k_g = AffinePoint::get_generator(*t).scalar_mul(&k);
-            assert_eq!(k_g.is_valid(), true);
-            assert_eq!(k_base.is_valid(), true);
-            assert_eq!(k_g.equals(k_base), true);
+        for &id in [P256, P384].iter() {
+            let k_base = AffinePoint::base_mul(id, &k);
+            let k_g = AffinePoint::get_generator(id).scalar_mul(&k);
+            assert_eq!(k_g.is_valid(), true, "for id: {:?}", id);
+            assert_eq!(k_base.is_valid(), true, "for id: {:?}", id);
+            assert_eq!(k_g.equals(k_base), true, "for id: {:?}", id);
         }
     }
 
     #[test]
     fn point_conversion() {
-        let gen = AffinePoint::get_generator(P256);
-        let jac = gen.to_jacobian();
-        let gen_conv = jac.to_affine();
-        assert_eq!(gen.is_valid(), true);
-        assert_eq!(gen_conv.is_valid(), true);
-        assert_eq!(jac.is_valid(), true);
+        for &id in [P256,P384].iter() {
+            let gen = AffinePoint::get_generator(id);
+            let jac = gen.to_jacobian();
+            let gen_conv = jac.to_affine();
+            assert_eq!(gen.is_valid(), true, "for id: {:?}", id);
+            assert_eq!(gen_conv.is_valid(), true, "for id: {:?}", id);
+            assert_eq!(jac.is_valid(), true, "for id: {:?}", id);
+        }
+    }
+
+    #[test]
+    fn point_encoding() {
+        for &id in [P256,P384].iter() {
+            let gen = AffinePoint::get_generator(id);
+            let enc = gen.to_unencoded();
+            // check unencoded point representation
+            match id {
+                P256 => {
+                    assert_eq!(hex::encode(enc.x.to_bytes_be()), "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
+                    assert_eq!(hex::encode(enc.y.to_bytes_be()), "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5");
+                },
+                P384 => {
+                    assert_eq!(hex::encode(enc.x.to_bytes_be()), "aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7");
+                    assert_eq!(hex::encode(enc.y.to_bytes_be()), "3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f");
+                },
+                _ => panic!("bad curve chosen")
+            };
+            let unenc = enc.to_encoded();
+            assert_eq!(unenc.is_valid(), true, "for id: {:?}", id);
+            assert_eq!(unenc.equals(gen), true, "for id: {:?}", id);
+        }
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/
