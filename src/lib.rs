@@ -1,7 +1,7 @@
 //! The `ecc-rs` crate aims to provide an interface for performing low-level
 //! elliptic curve operations. We use a modified version of the `ring` crate for
 //! performing elliptic curve operations (in turn, using BoringSSL under the
-//! hood). In terms of modifications to the ring library, it is has mostly been a
+//! hood). In terms of modifications to the *ring* library, it is has mostly been a
 //! case of publicising some structs and functions that were previously private.
 //!
 //! The only thing that the library exposes currently are structs called
@@ -12,7 +12,7 @@
 //! BigUint values, but these values are converted to `ring` respresentations
 //! before any operations are performed.
 //!
-//! While this library uses the well-travelled ring library, the layer that we
+//! While this library uses the well-travelled *ring* library, the layer that we
 //! have added is not intended to be used in *anything* other than experimental
 //! implementations. Moreover, this library is not developed with optimised
 //! performance in mind and so anything that is performance critical may way want
@@ -26,7 +26,7 @@
     unsafe_code
 )]
 #![deny(
-    // missing_docs,
+    missing_docs,
     unstable_features,
     unused_qualifications,
     variant_size_differences,

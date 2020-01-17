@@ -1,54 +1,54 @@
-/// The point module provides the main interface for performing elliptic curve
-/// operations. Currently we only support the `secp256r1` and `secp384r1` curves,
-/// both of which are implemented in the `suite_b` module of ring.
-///
-/// # Examples
-///
-/// Performing operations on elliptic curve points is as easy as running:
-///
-/// ```
-/// use ecc_rs::point::*;
-/// use num::BigUint;
-///
-/// // get new zero point
-/// let _ = AffinePoint::new(P256);
-///
-/// // get generator point
-/// let g = AffinePoint::get_generator(P256);
-///
-/// // perform scalar mult
-/// let k = BigUint::parse_bytes(b"0a", 16).unwrap();
-/// let k_base = AffinePoint::base_mul(P256, &k);
-/// let k_g = g.scalar_mul(&k);
-///
-/// // check validity and equality
-/// assert_eq!(k_g.is_valid(), true);
-/// assert_eq!(k_base.is_valid(), true);
-/// assert_eq!(k_g.equals(k_base), true);
-///
-/// // add points
-/// let k_1_g = g.to_jacobian().add(&k_g).to_affine();
-///
-/// // check point is valid
-/// // assert_eq!(k_1_g.is_valid(), true);
-///
-/// // check points are equal
-/// let k_1 = BigUint::parse_bytes(b"0b", 16).unwrap();
-/// let k_1_chk_g = g.scalar_mul(&k_1).to_affine();
-/// // assert_eq!(k_1_g.equals(k_1_chk_g), true);
-/// ```
-///
-/// Conversion between affine and jacobian points is also simple:
-///
-/// ```
-/// use ecc_rs::point::*;
-/// let gen = AffinePoint::get_generator(P256);
-/// let jac = gen.to_jacobian();
-/// let gen_conv = jac.to_affine();
-/// assert_eq!(gen.is_valid(), true);
-/// assert_eq!(gen_conv.is_valid(), true);
-/// assert_eq!(jac.is_valid(), true);
-/// ```
+//! The point module provides the main interface for performing elliptic curve
+//! operations. Currently we only support the `secp256r1` and `secp384r1` curves,
+//! both of which are implemented in the `suite_b` module of ring.
+//!
+//! # Examples
+//!
+//! Performing operations on elliptic curve points is as easy as running:
+//!
+//! ```
+//! use ecc_rs::point::*;
+//! use num::BigUint;
+//!
+//! // get new zero point
+//! let _ = AffinePoint::new(P256);
+//!
+//! // get generator point
+//! let g = AffinePoint::get_generator(P256);
+//!
+//! // perform scalar mult
+//! let k = BigUint::parse_bytes(b"0a", 16).unwrap();
+//! let k_base = AffinePoint::base_mul(P256, &k);
+//! let k_g = g.scalar_mul(&k);
+//!
+//! // check validity and equality
+//! assert_eq!(k_g.is_valid(), true);
+//! assert_eq!(k_base.is_valid(), true);
+//! assert_eq!(k_g.equals(k_base), true);
+//!
+//! // add points
+//! let k_1_g = g.to_jacobian().add(&k_g).to_affine();
+//!
+//! // check point is valid
+//! // assert_eq!(k_1_g.is_valid(), true);
+//!
+//! // check points are equal
+//! let k_1 = BigUint::parse_bytes(b"0b", 16).unwrap();
+//! let k_1_chk_g = g.scalar_mul(&k_1).to_affine();
+//! // assert_eq!(k_1_g.equals(k_1_chk_g), true);
+//! ```
+//!
+//! Conversion between affine and jacobian points is also simple:
+//!
+//! ```
+//! use ecc_rs::point::*;
+//! let gen = AffinePoint::get_generator(P256);
+//! let jac = gen.to_jacobian();
+//! let gen_conv = jac.to_affine();
+//! assert_eq!(gen.is_valid(), true);
+//! assert_eq!(gen_conv.is_valid(), true);
+//! assert_eq!(jac.is_valid(), true);
+//! ```
 
 use num::{BigUint,Zero};
 use untrusted;
@@ -74,12 +74,16 @@ use ring_ecc::arithmetic::montgomery::R;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::error::Unspecified;
 
-/// P256 constant for exposing ring CurveID::P256 enum
+/// P256 constant for exposing *ring* CurveID::P256 enum
 pub const P256: CurveID = CurveID::P256;
-/// P384 constant for exposing ring CurveID::P384 enum
+/// P384 constant for exposing *ring* CurveID::P384 enum
 pub const P384: CurveID = CurveID::P384;
 
+/// Used for indicating that a point is in montgomery encoding. This encoding is
+/// used for perfoming all group operations since this is how *ring* internals
+/// do it.
 pub enum Encoded {}
+/// Indiciates that the point is unencoded, aka transmission format.
 pub enum Unencoded {}
 
 /// The `AffinePoint` struct provides access to a base elliptic curve point
@@ -104,8 +108,8 @@ pub enum Unencoded {}
 /// let g = AffinePoint::get_generator(P256);
 /// ```
 pub struct AffinePoint<T> {
-    pub x: BigUint,
-    pub y: BigUint,
+    x: BigUint,
+    y: BigUint,
     id: CurveID,
     ops: &'static CurveOps,
     encoding: PhantomData<T>,
@@ -139,7 +143,7 @@ impl AffinePoint<Encoded> {
     pub fn get_generator(id: CurveID) -> Self {
         match id {
             P256 => Self {
-                // ring doesn't explicitly make the P256 generator available,
+                // *ring* doesn't explicitly make the P256 generator available,
                 // but some applications need it. we use the one in
                 // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt because it
                 // differs from the standard generator
@@ -150,9 +154,9 @@ impl AffinePoint<Encoded> {
                 encoding: PhantomData,
             },
             P384 => {
-                // for some reason the ring generator does not agree with
+                // for some reason the *ring* generator does not agree with
                 // https://www.secg.org/SEC2-Ver-1.0.pdf Section 2.8.1. using
-                // the ring point for now
+                // the *ring* point for now
                 Self {
                     x: elem_to_biguint(P384_GENERATOR.0),
                     y: elem_to_biguint(P384_GENERATOR.1),
@@ -292,6 +296,8 @@ impl AffinePoint<Unencoded> {
     }
 }
 
+/// The `JacobianPoint` struct represents an elliptic curve point in jacobian
+/// coordinates (in either montgomery encoding or not).
 pub struct JacobianPoint<T> {
     x: BigUint,
     y: BigUint,
@@ -307,6 +313,8 @@ impl JacobianPoint<Encoded> {
         AffinePoint::new(id).to_jacobian()
     }
 
+    /// Performs ellptic curve point addition on the point `self` and `other`
+    /// (both in jacobian coordinates) and returns the result as a new point
     pub fn add(&self, other: &JacobianPoint<Encoded>) -> Self {
         let p1 = self.as_ring_jac_point();
         let p2 = other.as_ring_jac_point();
@@ -314,6 +322,8 @@ impl JacobianPoint<Encoded> {
         Self::from_ring_jac_point(p_add, self.id, self.ops)
     }
 
+    /// Returns `true` if the coordinates for `self` and `other` are the same,
+    /// and the points are on the same curve. Returns `false` otherwise.
     pub fn equals(&self, other: Self) -> bool {
         (self.x == other.x)
         && (self.y == other.y)
@@ -321,10 +331,13 @@ impl JacobianPoint<Encoded> {
         && (self.id == other.id)
     }
 
+    /// Converts the point to an `AffinePoint` object and runs `is_valid()`.
     pub fn is_valid(&self) -> bool {
         self.to_affine().is_valid()
     }
 
+    /// Converts the `JacobianPoint` object to an `AffinePoint` object (i.e.
+    /// affine coordinates) and returns the result.
     pub fn to_affine(&self) -> AffinePoint<Encoded> {
         let (x_ele, y_ele) = affine_from_jacobian(self.ops, &self.as_ring_jac_point()).unwrap();
         AffinePoint {
@@ -336,6 +349,8 @@ impl JacobianPoint<Encoded> {
         }
     }
 
+    /// Converts the coordinates of the point to the representation used in
+    /// *ring* internals
     fn as_ring_jac_point(&self) -> RingPoint {
         let (x, y, z) = self.use_for_ring_ops();
         let mut limbs: [Limb; MAX_LIMBS*3] = [0; MAX_LIMBS*3];
@@ -345,6 +360,7 @@ impl JacobianPoint<Encoded> {
         RingPoint { xyz: limbs }
     }
 
+    /// Returns a ring point representation back into a `JacobianPoint` struct
     fn from_ring_jac_point(ring_pt: RingPoint, id: CurveID, ops: &'static CurveOps) -> Self {
         let x = elem_to_biguint(ops.common.point_x(&ring_pt));
         let y = elem_to_biguint(ops.common.point_y(&ring_pt));
@@ -359,7 +375,8 @@ impl JacobianPoint<Encoded> {
         }
     }
 
-    /// encodes the fields of the point
+    /// encodes the fields of the `JacobianPoint` into the internal *ring*
+    /// format
     fn use_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
         (
             biguint_to_elem(self.ops.common, &self.x),
@@ -442,7 +459,7 @@ mod tests {
                 _ => panic!("test failed")
             };
 
-            // for some reason the ring test vectors use their bespoke generator
+            // for some reason the *ring* test vectors use their bespoke generator
             // with the minus y coordinate
             let test_gen = gen.get_minus_y_point();
             for vector in MULT_TEST_VECTORS[i].iter() {
