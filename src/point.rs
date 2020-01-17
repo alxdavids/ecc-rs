@@ -413,6 +413,28 @@ mod tests {
 
     #[test]
     fn scalar_mul_test() {
+        // test functions for returning points with -y coordinates as *ring*
+        // uses a strange point for test vectors
+        fn get_curve_modulus_as_biguint(point: &AffinePoint<Encoded>) -> BigUint {
+            let p: Elem<R> = Elem {
+                limbs: point.ops.common.q.p,
+                m: PhantomData,
+                encoding: PhantomData
+            };
+            elem_to_biguint(p)
+        }
+
+        fn get_minus_y_point(point: &AffinePoint<Encoded>) -> AffinePoint<Encoded> {
+            let modulus = get_curve_modulus_as_biguint(&point);
+            let y = elem_to_biguint(biguint_to_elem(point.ops.common, &point.y));
+            AffinePoint {
+                x: point.x.clone(),
+                y: modulus - y,
+                id: point.id,
+                ops: point.ops,
+                encoding: PhantomData,
+            }
+        }
         for i in 0..2 {
             let gen = match i {
                 0 => AffinePoint::get_generator(P256),
