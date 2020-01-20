@@ -50,9 +50,12 @@
 //! assert_eq!(jac.is_valid(), true);
 //! ```
 
-use num::{BigUint,Zero};
+use num::{BigUint,BigInt,Zero};
+use num_bigint::{ToBigInt,ToBigUint};
 use untrusted;
 use core::marker::PhantomData;
+
+use subtle::ConditionallySelectable;
 
 use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
@@ -64,6 +67,8 @@ use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
+use ring_ecc::ec::suite_b::ops::p256::PUBLIC_SCALAR_OPS as P256_SCALAR_OPS;
+use ring_ecc::ec::suite_b::ops::p384::PUBLIC_SCALAR_OPS as P384_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
 use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::limb::big_endian_from_limbs;
@@ -209,6 +214,86 @@ impl AffinePoint<Encoded> {
     /// TODO: Do this in a less naive way
     pub fn to_jacobian(&self) -> JacobianPoint<Encoded> {
         self.scalar_mul(&BigUint::from(1_u64))
+    }
+
+    /// ser
+    pub fn serialize(&self, compress: bool) -> Vec<u8> {
+        let p = self.to_unencoded();
+        let mut out: Vec<u8> = Vec::new();
+        let x_bytes = p.x.to_bytes_be();
+        let y_bytes = p.y.to_bytes_be();
+        if !compress {
+            out.push(0x04);
+            out.extend_from_slice(&x_bytes);
+            out.extend_from_slice(&y_bytes);
+        } else {
+            let sign = sgn0_le(&y_bytes);
+            // add tag for compression
+            match sign {
+                1 => out.push(0x02),
+                -1 => out.push(0x03),
+                _ => panic!("not intended!")
+            };
+            out.extend_from_slice(&x_bytes);
+        }
+        out
+    }
+
+    /// deser
+    pub fn deserialize(&mut self, out: &[u8]) -> AffinePoint<Encoded> {
+        let coord_byte_length = self.ops.common.num_limbs*LIMB_BYTES;
+        let cops = self.ops.common;
+        let x = BigUint::from_bytes_be(&out[1..coord_byte_length+1]);
+        let parity = out[0];
+        let y = match parity {
+            0x04 => BigUint::from_bytes_be(&out[1+coord_byte_length..]),
+            0x02 | 0x03 => {
+                let x_enc = AffinePoint::parse_coord_as_elems(self.id, &x);
+                let xx_enc = self.ops.common.elem_squared(&x_enc);
+                let scalar_ops = match self.id {
+                    P256 => &P256_SCALAR_OPS,
+                    P384 => &P384_SCALAR_OPS,
+                    _ => panic!("bad id")
+                };
+                let xx__a_unenc = scalar_ops.elem_sum(
+                    &cops.elem_unencoded(&xx_enc),
+                    &cops.elem_unencoded(&self.ops.common.a)
+                );
+                let xxx__ax_unenc = cops.elem_product(&x_enc, &xx__a_unenc);
+                let yy_unenc = scalar_ops.elem_sum(&xxx__ax_unenc,
+                                                &cops.elem_unencoded(&cops.b)
+                                            );
+                // perform square root
+                // (TODO: don't do BigUint ops as they are not constant time)
+                let q = self.get_curve_modulus_as_biguint();
+                let sqrt = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
+                let y_sqrt = elem_to_biguint(yy_unenc).modpow(&sqrt, &q);
+                let y_sqrt_bytes = y_sqrt.to_bytes_be();
+
+                // Check that the sign matches what is sent in the compressed
+                // encoding. If not we need to get the alternative point with -y
+                // coordinate, where y is the recovered coordinate
+                let y_sqrt_sign = sgn0_le(&y_sqrt_bytes);
+                let y_cmp = (y_sqrt_sign == -1) as u8;
+                let parity_bit = (0x03 == parity) as u8;
+                let parity_cmp = (parity_bit == y_cmp) as u8;
+                let out_sign = i8::conditional_select(&1, &(-1), parity_cmp.into());
+                let mod_mask = u8::conditional_select(&1, &0, parity_cmp.into());
+                let y_par = BigInt::from(out_sign) * y_sqrt.to_bigint().unwrap();
+                let modulus = (BigUint::from(mod_mask) * &q).to_bigint().unwrap();
+                (modulus - y_par).to_biguint().unwrap()
+            },
+            _ => panic!("invalid point serialization")
+        };
+
+        // returns an encoded point
+        (AffinePoint {
+            x: x,
+            y: y,
+            id: self.id,
+            ops: self.ops,
+            encoding: PhantomData
+        }).to_encoded()
     }
 
     /// Returns the `AffinePoint` object in unencoded format, removing the
@@ -386,6 +471,20 @@ impl JacobianPoint<Encoded> {
     }
 }
 
+/// returns `1_i8` if the sign is positive, and `-1_i8` if it is negative. As
+/// documented in draft-irtf-cfrg-hash-to-curve (Section
+/// https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05#section-4.1.2).
+/// Expects the input `x` to be in big-endian format.
+pub fn sgn0_le(x: &[u8]) -> i8 {
+    let pos = x[x.len()-1];
+    let res = pos & 1;
+    let sgn = i8::conditional_select(&1, &(-1), res.into());
+    let zero_cmp = (pos == 0) as u8;
+    let sgn = i8::conditional_select(&sgn, &0, zero_cmp.into());
+    let zero_cmp_2 = (sgn == 0) as u8;
+    i8::conditional_select(&sgn, &1, zero_cmp_2.into())
+}
+
 #[allow(dead_code)]
 fn biguint_to_scalar(curve_params: &CommonOps, x: &BigUint) -> Scalar {
     let x_bytes = x.to_bytes_be();
@@ -430,28 +529,6 @@ mod tests {
 
     #[test]
     fn scalar_mul_test() {
-        // test functions for returning points with -y coordinates as *ring*
-        // uses a strange point for test vectors
-        fn get_curve_modulus_as_biguint(point: &AffinePoint<Encoded>) -> BigUint {
-            let p: Elem<R> = Elem {
-                limbs: point.ops.common.q.p,
-                m: PhantomData,
-                encoding: PhantomData
-            };
-            elem_to_biguint(p)
-        }
-
-        fn get_minus_y_point(point: &AffinePoint<Encoded>) -> AffinePoint<Encoded> {
-            let modulus = get_curve_modulus_as_biguint(&point);
-            let y = elem_to_biguint(biguint_to_elem(point.ops.common, &point.y));
-            AffinePoint {
-                x: point.x.clone(),
-                y: modulus - y,
-                id: point.id,
-                ops: point.ops,
-                encoding: PhantomData,
-            }
-        }
         for i in 0..2 {
             let gen = match i {
                 0 => AffinePoint::get_generator(P256),
@@ -559,6 +636,34 @@ mod tests {
             let unenc = enc.to_encoded();
             assert_eq!(unenc.is_valid(), true, "for id: {:?}", id);
             assert_eq!(unenc.equals(gen), true, "for id: {:?}", id);
+        }
+    }
+
+    #[test]
+    fn point_serialization() {
+        for &id in [P256,P384].iter() {
+            let gen = AffinePoint::get_generator(id);
+            let ser_de = gen.serialize(false);
+            println!("ser_dec: {:?}", ser_de);
+            let deser_de = (AffinePoint::new(id)).deserialize(&ser_de);
+            assert_eq!(deser_de.is_valid(), true, "decompressed point validity check for {:?}", id);
+            assert_eq!(deser_de.equals(gen), true, "decompressed point equality check for {:?}", id);
+        }
+    }
+
+    #[test]
+    fn point_serialization_compressed() {
+        for &id in [P256,P384].iter() {
+            let gen = AffinePoint::get_generator(id);
+            let ser_cmp = gen.serialize(true);
+            println!("ser_cmp: {:?}", ser_cmp);
+            let deser_cmp = (AffinePoint::new(id)).deserialize(&ser_cmp);
+            println!("gen_x: {:?}", gen.x.to_bytes_be());
+            println!("gen_y: {:?}", gen.y.to_bytes_be());
+            println!("x: {:?}", deser_cmp.x.to_bytes_be());
+            println!("y: {:?}", deser_cmp.y.to_bytes_be());
+            assert_eq!(deser_cmp.is_valid(), true, "compressed point validity check for {:?}", id);
+            assert_eq!(deser_cmp.equals(gen), true, "compressed point equality check for {:?}", id);
         }
     }
 
