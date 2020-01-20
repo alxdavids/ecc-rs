@@ -68,7 +68,7 @@
 //! ```
 
 use num::{BigUint,BigInt,Zero};
-use num_bigint::{ToBigInt,ToBigUint};
+use num_bigint::ToBigInt;
 use untrusted;
 use core::marker::PhantomData;
 
