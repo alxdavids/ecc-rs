@@ -166,9 +166,9 @@ impl AffinePoint<Encoded> {
         match id {
             P256 => Self {
                 // *ring* doesn't explicitly make the P256 generator available,
-                // but some applications need it. we use the one in
-                // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt because it
-                // differs from the standard generator
+                // but some applications need it. we use the montgomery encoded
+                // values provided in (except with -y coordinate)
+                // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt
                 x: BigUint::parse_bytes(b"18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c", 16).unwrap(),
                 y: BigUint::parse_bytes(b"8571ff1825885d85d2e88688dd21f3258b4ab8e4ba19e45cddf25357ce95560a", 16).unwrap(),
                 id: P256,
