@@ -1,19 +1,27 @@
 //! utils module
 
 use crate::ring_ecc;
+use ring_ecc::ec::CurveID;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::arithmetic::montgomery::R;
 use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
+use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
+use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
+use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::ops::{elem_parse_big_endian_fixed_consttime,scalar_parse_big_endian_fixed_consttime};
 use ring_ecc::limb::big_endian_from_limbs;
 use ring_ecc::limb::LIMB_BYTES;
+use ring_ecc::error::Unspecified;
 
+use untrusted;
 use subtle::ConditionallySelectable;
 
 use num::{BigUint,Zero,One};
 use num_traits::cast::ToPrimitive;
 use core::marker::PhantomData;
+
+use super::{P256,P384};
 
 /// I2osp converts an integer to a big-endian octet-string of length `xLen` and
 /// copies it into `out` (see: https://tools.ietf.org/html/rfc8017#section-4.1)
@@ -48,20 +56,38 @@ pub fn sgn0_le(x: &[u8]) -> i8 {
     i8::conditional_select(&sgn, &1, zero_cmp_2.into())
 }
 
-pub fn biguint_to_scalar(curve_params: &CommonOps, x: &BigUint) -> Scalar {
+pub fn biguint_to_scalar(cops: &CommonOps, x: &BigUint) -> Scalar {
     let x_bytes = x.to_bytes_be();
-    let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
+    let MAX_LEN = cops.num_limbs*LIMB_BYTES;
     let mut inp = vec![0; MAX_LEN];
     inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
-    scalar_parse_big_endian_fixed_consttime(curve_params, untrusted::Input::from(&inp)).unwrap()
+    scalar_parse_big_endian_fixed_consttime(cops, untrusted::Input::from(&inp)).unwrap()
 }
 
-pub fn biguint_to_elem(curve_params: &CommonOps, x: &BigUint) -> Elem<R> {
+/// Translates a value into a *ring* Elem<R>, where the value has not previously
+/// been encoded
+///
+/// TODO: come up with better error type!!
+pub fn biguint_to_elem_unenc(id: CurveID, x: &BigUint) -> Elem<R> {
+    let bytes = x.to_bytes_be();
+    let input = untrusted::Input::from(&bytes);
+    input.read_all(Unspecified, |input| {
+        Ok(
+            match id {
+                P256 => P256_PK_OPS.elem_parse(input).unwrap(),
+                P384 => P384_PK_OPS.elem_parse(input).unwrap(),
+                _ => panic!("blah")
+            }
+        )
+    }).unwrap()
+}
+
+pub fn biguint_to_elem(cops: &CommonOps, x: &BigUint) -> Elem<R> {
     let x_bytes = x.to_bytes_be();
-    let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
+    let MAX_LEN = cops.num_limbs*LIMB_BYTES;
     let mut inp = vec![0; MAX_LEN];
     inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
-    bytes_to_elem(curve_params, &inp)
+    bytes_to_elem(cops, &inp)
 }
 
 pub fn elem_to_biguint<T: RingEncoding>(elem: Elem<T>) -> BigUint {
@@ -69,9 +95,9 @@ pub fn elem_to_biguint<T: RingEncoding>(elem: Elem<T>) -> BigUint {
 }
 
 /// parses an elem from be_bytes
-pub fn bytes_to_elem(curve_params: &CommonOps, bytes: &[u8]) -> Elem<R> {
+pub fn bytes_to_elem(cops: &CommonOps, bytes: &[u8]) -> Elem<R> {
     Elem {
-        limbs: elem_parse_big_endian_fixed_consttime(curve_params, untrusted::Input::from(bytes)).unwrap().limbs,
+        limbs: elem_parse_big_endian_fixed_consttime(cops, untrusted::Input::from(bytes)).unwrap().limbs,
         encoding: PhantomData,
         m: PhantomData
     }
@@ -82,4 +108,30 @@ pub fn elem_to_bytes<T: RingEncoding>(elem: Elem<T>) -> Vec<u8> {
     let mut out: Vec<u8> = vec![0; MAX_LIMBS*LIMB_BYTES];
     big_endian_from_limbs(&elem.limbs, &mut out);
     out
+}
+
+/// gets the negative value of the element in the field
+///
+/// TODO: uses BigInt ops
+pub fn minus_elem(cops: &CommonOps, p: &BigUint, elem: Elem<R>) -> Elem<R> {
+    let elem_bu = elem_to_biguint(elem);
+    biguint_to_elem(cops, &(p - elem_bu))
+}
+
+/// computes the element representing 1/x in the base field
+pub fn invert_elem(ops: &CurveOps, x: Elem<R>) -> Elem<R> {
+    let xx_inv = ops.elem_inverse_squared(&x);
+    ops.common.elem_product(&xx_inv, &x)
+}
+
+/// Performs a square root operation in the underlying field using the input
+/// exponent
+pub fn sqrt(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
+    input.modpow(exp, modulus)
+}
+
+/// Performs an exponentiation in the underlying field that ascertains whether
+/// the current element is a square, or not.
+pub fn is_square(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
+    input.modpow(exp, modulus)
 }

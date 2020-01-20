@@ -69,7 +69,6 @@
 
 use num::{BigUint,BigInt,Zero};
 use num_bigint::ToBigInt;
-use untrusted;
 use core::marker::PhantomData;
 
 use subtle::ConditionallySelectable;
@@ -82,8 +81,6 @@ use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::Elem;
 use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
-use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
-use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_SCALAR_OPS as P256_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_SCALAR_OPS as P384_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
@@ -91,9 +88,8 @@ use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::error::Unspecified;
 
-mod h2c;
+// mod h2c;
 mod utils;
 
 /// P256 constant for exposing *ring* CurveID::P256 enum
@@ -287,7 +283,7 @@ impl AffinePoint<Encoded> {
             },
             0x02 | 0x03 => {
                 assert_eq!(input.len(), coord_byte_length+1);
-                let x_enc = AffinePoint::parse_coord_as_elems(self.id, &x);
+                let x_enc = utils::biguint_to_elem_unenc(self.id, &x);
                 let xx_enc = self.ops.common.elem_squared(&x_enc);
                 let scalar_ops = match self.id {
                     P256 => &P256_SCALAR_OPS,
@@ -305,8 +301,8 @@ impl AffinePoint<Encoded> {
                 // perform square root
                 // (TODO: don't do BigUint ops as they are not constant time)
                 let q = self.get_curve_modulus_as_biguint();
-                let sqrt = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
-                let y_sqrt = utils::elem_to_biguint(yy_unenc).modpow(&sqrt, &q);
+                let sqrt_exp = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
+                let y_sqrt = utils::sqrt(&utils::elem_to_biguint(yy_unenc), &sqrt_exp, &q);
                 let y_sqrt_bytes = y_sqrt.to_bytes_be();
 
                 // Check that the sign matches what is sent in the compressed
@@ -395,28 +391,12 @@ impl AffinePoint<Unencoded> {
     /// performing group operations.
     fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
-            x: utils::elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.x)),
-            y: utils::elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.y)),
+            x: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, &self.x)),
+            y: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, &self.y)),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
         }
-    }
-
-    /// Returns a BigUint coordinate as a montgomery encoded *ring* element
-    fn parse_coord_as_elems(id: CurveID, coord: &BigUint) -> Elem<R> {
-        let bytes = coord.to_bytes_be();
-        let input = untrusted::Input::from(&bytes);
-        // TODO: come up with better error type!!
-        input.read_all(Unspecified, |input| {
-            Ok(
-                match id {
-                    P256 => P256_PK_OPS.elem_parse(input).unwrap(),
-                    P384 => P384_PK_OPS.elem_parse(input).unwrap(),
-                    _ => panic!("blah")
-                }
-            )
-        }).unwrap()
     }
 }
 
