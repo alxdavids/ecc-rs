@@ -79,7 +79,7 @@ use ring_ecc::ec::CurveID;
 use ring_ecc::ec::suite_b::verify_affine_point_is_on_the_curve;
 use ring_ecc::ec::suite_b::ops::Point as RingPoint;
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
-use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
+use ring_ecc::ec::suite_b::ops::Elem;
 use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
@@ -88,13 +88,13 @@ use ring_ecc::ec::suite_b::ops::p256::PUBLIC_SCALAR_OPS as P256_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_SCALAR_OPS as P384_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
 use ring_ecc::limb::{Limb,LIMB_BYTES};
-use ring_ecc::limb::big_endian_from_limbs;
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
-use ring_ecc::ec::suite_b::ops::{elem_parse_big_endian_fixed_consttime,scalar_parse_big_endian_fixed_consttime};
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::error::Unspecified;
+
+mod h2c;
+mod utils;
 
 /// P256 constant for exposing *ring* CurveID::P256 enum
 pub const P256: CurveID = CurveID::P256;
@@ -180,8 +180,8 @@ impl AffinePoint<Encoded> {
                 // https://www.secg.org/SEC2-Ver-1.0.pdf Section 2.8.1. using
                 // the *ring* point for now
                 Self {
-                    x: elem_to_biguint(P384_GENERATOR.0),
-                    y: elem_to_biguint(P384_GENERATOR.1),
+                    x: utils::elem_to_biguint(P384_GENERATOR.0),
+                    y: utils::elem_to_biguint(P384_GENERATOR.1),
                     id: P384,
                     ops: &P384_OPS,
                     encoding: PhantomData,
@@ -200,9 +200,9 @@ impl AffinePoint<Encoded> {
     /// Performs `k*P` where `P` is some point on the curve and `k` is the input
     /// scalar
     pub fn scalar_mul(&self, scalar: &BigUint) -> JacobianPoint<Encoded> {
-        let ring_sc = biguint_to_scalar(self.ops.common, scalar);
-        let x_elem = biguint_to_elem(self.ops.common, &self.x);
-        let y_elem = biguint_to_elem(self.ops.common, &self.y);
+        let ring_sc = utils::biguint_to_scalar(self.ops.common, scalar);
+        let x_elem = utils::biguint_to_elem(self.ops.common, &self.x);
+        let y_elem = utils::biguint_to_elem(self.ops.common, &self.y);
         let ring_pt = self.ops.point_mul(&ring_sc, &(x_elem, y_elem));
         JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.ops)
     }
@@ -247,7 +247,7 @@ impl AffinePoint<Encoded> {
             out.extend_from_slice(&x_bytes);
             out.extend_from_slice(&y_bytes);
         } else {
-            let sign = sgn0_le(&y_bytes);
+            let sign = utils::sgn0_le(&y_bytes);
             // add tag for compression
             match sign {
                 1 => out.push(0x02),
@@ -306,13 +306,13 @@ impl AffinePoint<Encoded> {
                 // (TODO: don't do BigUint ops as they are not constant time)
                 let q = self.get_curve_modulus_as_biguint();
                 let sqrt = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
-                let y_sqrt = elem_to_biguint(yy_unenc).modpow(&sqrt, &q);
+                let y_sqrt = utils::elem_to_biguint(yy_unenc).modpow(&sqrt, &q);
                 let y_sqrt_bytes = y_sqrt.to_bytes_be();
 
                 // Check that the sign matches what is sent in the compressed
                 // encoding. If not we need to get the alternative point with -y
                 // coordinate, where y is the recovered coordinate
-                let y_sqrt_sign = sgn0_le(&y_sqrt_bytes);
+                let y_sqrt_sign = utils::sgn0_le(&y_sqrt_bytes);
                 let y_cmp = (y_sqrt_sign == -1) as u8;
                 let parity_bit = (0x03 == parity) as u8;
                 let parity_cmp = (parity_bit == y_cmp) as u8;
@@ -342,8 +342,8 @@ impl AffinePoint<Encoded> {
         let (x_r, y_r) = self.as_ring_affine();
         let (x_unenc, y_unenc) = (ops.elem_unencoded(&x_r), ops.elem_unencoded(&y_r));
         AffinePoint {
-            x: elem_to_biguint(x_unenc),
-            y: elem_to_biguint(y_unenc),
+            x: utils::elem_to_biguint(x_unenc),
+            y: utils::elem_to_biguint(y_unenc),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
@@ -366,15 +366,15 @@ impl AffinePoint<Encoded> {
     /// *ring*. This is used when performing operations using the *ring*
     /// internals
     fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
-        (biguint_to_elem(self.ops.common, &self.x), biguint_to_elem(self.ops.common, &self.y))
+        (utils::biguint_to_elem(self.ops.common, &self.x), utils::biguint_to_elem(self.ops.common, &self.y))
     }
 
     /// Converts the *ring* representation of coordinates back into the BigUint
     /// representation
     fn from_ring_affine(pt: (Elem<R>, Elem<R>), id: CurveID) -> Self {
         let mut aff = Self::new(id);
-        aff.x = elem_to_biguint(pt.0);
-        aff.y = elem_to_biguint(pt.1);
+        aff.x = utils::elem_to_biguint(pt.0);
+        aff.y = utils::elem_to_biguint(pt.1);
         aff
     }
 
@@ -386,7 +386,7 @@ impl AffinePoint<Encoded> {
             m: PhantomData,
             encoding: PhantomData
         };
-        elem_to_biguint(p)
+        utils::elem_to_biguint(p)
     }
 }
 
@@ -395,8 +395,8 @@ impl AffinePoint<Unencoded> {
     /// performing group operations.
     fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
-            x: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.x)),
-            y: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.y)),
+            x: utils::elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.x)),
+            y: utils::elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.y)),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
@@ -465,8 +465,8 @@ impl JacobianPoint<Encoded> {
     pub fn to_affine(&self) -> AffinePoint<Encoded> {
         let (x_ele, y_ele) = affine_from_jacobian(self.ops, &self.as_ring_jac_point()).unwrap();
         AffinePoint {
-            x: elem_to_biguint(x_ele),
-            y: elem_to_biguint(y_ele),
+            x: utils::elem_to_biguint(x_ele),
+            y: utils::elem_to_biguint(y_ele),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData
@@ -486,9 +486,9 @@ impl JacobianPoint<Encoded> {
 
     /// Returns a ring point representation back into a `JacobianPoint` struct
     fn from_ring_jac_point(ring_pt: RingPoint, id: CurveID, ops: &'static CurveOps) -> Self {
-        let x = elem_to_biguint(ops.common.point_x(&ring_pt));
-        let y = elem_to_biguint(ops.common.point_y(&ring_pt));
-        let z = elem_to_biguint(ops.common.point_z(&ring_pt));
+        let x = utils::elem_to_biguint(ops.common.point_x(&ring_pt));
+        let y = utils::elem_to_biguint(ops.common.point_y(&ring_pt));
+        let z = utils::elem_to_biguint(ops.common.point_z(&ring_pt));
         Self {
             x: x,
             y: y,
@@ -503,62 +503,11 @@ impl JacobianPoint<Encoded> {
     /// format
     fn use_for_ring_ops(&self) -> (Elem<R>, Elem<R>, Elem<R>) {
         (
-            biguint_to_elem(self.ops.common, &self.x),
-            biguint_to_elem(self.ops.common, &self.y),
-            biguint_to_elem(self.ops.common, &self.z),
+            utils::biguint_to_elem(self.ops.common, &self.x),
+            utils::biguint_to_elem(self.ops.common, &self.y),
+            utils::biguint_to_elem(self.ops.common, &self.z),
         )
     }
-}
-
-/// returns `1_i8` if the sign is positive, and `-1_i8` if it is negative. As
-/// documented in draft-irtf-cfrg-hash-to-curve (Section
-/// https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05#section-4.1.2).
-/// Expects the input `x` to be in big-endian format.
-pub fn sgn0_le(x: &[u8]) -> i8 {
-    let pos = x[x.len()-1];
-    let res = pos & 1;
-    let sgn = i8::conditional_select(&1, &(-1), res.into());
-    let zero_cmp = (pos == 0) as u8;
-    let sgn = i8::conditional_select(&sgn, &0, zero_cmp.into());
-    let zero_cmp_2 = (sgn == 0) as u8;
-    i8::conditional_select(&sgn, &1, zero_cmp_2.into())
-}
-
-#[allow(dead_code)]
-fn biguint_to_scalar(curve_params: &CommonOps, x: &BigUint) -> Scalar {
-    let x_bytes = x.to_bytes_be();
-    let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
-    let mut inp = vec![0; MAX_LEN];
-    inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
-    scalar_parse_big_endian_fixed_consttime(curve_params, untrusted::Input::from(&inp)).unwrap()
-}
-
-fn biguint_to_elem(curve_params: &CommonOps, x: &BigUint) -> Elem<R> {
-    let x_bytes = x.to_bytes_be();
-    let MAX_LEN = curve_params.num_limbs*LIMB_BYTES;
-    let mut inp = vec![0; MAX_LEN];
-    inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
-    bytes_to_elem(curve_params, &inp)
-}
-
-fn elem_to_biguint<T: RingEncoding>(elem: Elem<T>) -> BigUint {
-    BigUint::from_bytes_be(&elem_to_bytes(elem))
-}
-
-/// parses an elem from be_bytes
-fn bytes_to_elem(curve_params: &CommonOps, bytes: &[u8]) -> Elem<R> {
-    Elem {
-        limbs: elem_parse_big_endian_fixed_consttime(curve_params, untrusted::Input::from(bytes)).unwrap().limbs,
-        encoding: PhantomData,
-        m: PhantomData
-    }
-}
-
-/// transform elem to be_bytes
-fn elem_to_bytes<T: RingEncoding>(elem: Elem<T>) -> Vec<u8> {
-    let mut out: Vec<u8> = vec![0; MAX_LIMBS*LIMB_BYTES];
-    big_endian_from_limbs(&elem.limbs, &mut out);
-    out
 }
 
 #[cfg(test)]
