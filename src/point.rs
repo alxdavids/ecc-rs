@@ -49,6 +49,23 @@
 //! assert_eq!(gen_conv.is_valid(), true);
 //! assert_eq!(jac.is_valid(), true);
 //! ```
+//!
+//! Point serialization/deserialization can be done for sending point data
+//! across the wire. Note that serialization of a point converts into unencoded
+//! format, and deserialization performs re-encoding internally:
+//!
+//! ```
+//! use ecc_rs::point::*;
+//! let gen = AffinePoint::get_generator(P256);
+//!
+//! // uncompressed
+//! let ser_decmp = gen.serialize(false);
+//! let deser_decmp = (AffinePoint::new(P256)).deserialize(&ser_decmp);
+//!
+//! // compressed
+//! let ser_cmp = gen.serialize(true);
+//! let deser_cmp = (AffinePoint::new(P256)).deserialize(&ser_cmp);
+//! ```
 
 use num::{BigUint,BigInt,Zero};
 use num_bigint::{ToBigInt,ToBigUint};
@@ -216,7 +233,10 @@ impl AffinePoint<Encoded> {
         self.scalar_mul(&BigUint::from(1_u64))
     }
 
-    /// ser
+    /// Converts the point into either uncompressed or compressed format
+    /// depending on the value of the bool `compress`. The serialization of the
+    /// point follows the format specified in
+    /// [SEC1](https://www.secg.org/sec1-v2.pdf).
     pub fn serialize(&self, compress: bool) -> Vec<u8> {
         let p = self.to_unencoded();
         let mut out: Vec<u8> = Vec::new();
@@ -239,15 +259,34 @@ impl AffinePoint<Encoded> {
         out
     }
 
-    /// deser
-    pub fn deserialize(&mut self, out: &[u8]) -> AffinePoint<Encoded> {
+    /// Attempts to convert the provided byte array into a new encoded
+    /// `AffinePoint` object. Fails if the recovered point is not valid.
+    ///
+    /// When a point is 'uncompressed' it should take the form `[0x04, <--
+    /// coord_byte_length -->, <-- coord_byte_length -->]`. When it is
+    /// compressed it should take the form `[b, <-- coord_byte_length -->]`,
+    /// where `b == 0x02` or `b == 0x03`.
+    ///
+    /// # Warning
+    ///
+    /// Point deserialization for compressed points currently uses
+    /// BigUint arithmetic and so it cannot be considered constant-time (even
+    /// though it is implemented using straight-line arithmetic).
+    pub fn deserialize(&mut self, input: &[u8]) -> AffinePoint<Encoded> {
         let coord_byte_length = self.ops.common.num_limbs*LIMB_BYTES;
         let cops = self.ops.common;
-        let x = BigUint::from_bytes_be(&out[1..coord_byte_length+1]);
-        let parity = out[0];
+        let x = BigUint::from_bytes_be(&input[1..coord_byte_length+1]);
+        let parity = input[0];
+        // An array of bytes is in uncompressed format if the first byte of
+        // `input` is `0x04`, and in compressed format if it is `0x02` or
+        // `0x03`.
         let y = match parity {
-            0x04 => BigUint::from_bytes_be(&out[1+coord_byte_length..]),
+            0x04 => {
+                assert_eq!(input.len(), 2*coord_byte_length+1);
+                BigUint::from_bytes_be(&input[1+coord_byte_length..])
+            },
             0x02 | 0x03 => {
+                assert_eq!(input.len(), coord_byte_length+1);
                 let x_enc = AffinePoint::parse_coord_as_elems(self.id, &x);
                 let xx_enc = self.ops.common.elem_squared(&x_enc);
                 let scalar_ops = match self.id {
@@ -298,7 +337,7 @@ impl AffinePoint<Encoded> {
 
     /// Returns the `AffinePoint` object in unencoded format, removing the
     /// montgomery encoding
-    pub fn to_unencoded(&self) -> AffinePoint<Unencoded> {
+    fn to_unencoded(&self) -> AffinePoint<Unencoded> {
         let ops = self.ops.common;
         let (x_r, y_r) = self.as_ring_affine();
         let (x_unenc, y_unenc) = (ops.elem_unencoded(&x_r), ops.elem_unencoded(&y_r));
@@ -354,7 +393,7 @@ impl AffinePoint<Encoded> {
 impl AffinePoint<Unencoded> {
     /// Re-encodes the `AffinePoint` object in montgomery encoding, for
     /// performing group operations.
-    pub fn to_encoded(&self) -> AffinePoint<Encoded> {
+    fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
             x: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.x)),
             y: elem_to_biguint(Self::parse_coord_as_elems(self.id, &self.y)),
@@ -644,7 +683,6 @@ mod tests {
         for &id in [P256,P384].iter() {
             let gen = AffinePoint::get_generator(id);
             let ser_de = gen.serialize(false);
-            println!("ser_dec: {:?}", ser_de);
             let deser_de = (AffinePoint::new(id)).deserialize(&ser_de);
             assert_eq!(deser_de.is_valid(), true, "decompressed point validity check for {:?}", id);
             assert_eq!(deser_de.equals(gen), true, "decompressed point equality check for {:?}", id);
@@ -656,12 +694,7 @@ mod tests {
         for &id in [P256,P384].iter() {
             let gen = AffinePoint::get_generator(id);
             let ser_cmp = gen.serialize(true);
-            println!("ser_cmp: {:?}", ser_cmp);
             let deser_cmp = (AffinePoint::new(id)).deserialize(&ser_cmp);
-            println!("gen_x: {:?}", gen.x.to_bytes_be());
-            println!("gen_y: {:?}", gen.y.to_bytes_be());
-            println!("x: {:?}", deser_cmp.x.to_bytes_be());
-            println!("y: {:?}", deser_cmp.y.to_bytes_be());
             assert_eq!(deser_cmp.is_valid(), true, "compressed point validity check for {:?}", id);
             assert_eq!(deser_cmp.equals(gen), true, "compressed point equality check for {:?}", id);
         }
