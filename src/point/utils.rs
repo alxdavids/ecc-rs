@@ -147,10 +147,10 @@ pub fn sqrt(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
 
 /// Performs a square root operation in the underlying field using the input
 /// exponent
-pub fn elem_sqrt(cops: &CommonOps, elem: Elem<R>, exp: &BigUint, modulus: &BigUint) -> Elem<R> {
-    let input = elem_to_biguint(elem);
+pub fn elem_sqrt(id: CurveID, cops: &CommonOps, elem: Elem<R>, exp: &BigUint, modulus: &BigUint) -> Elem<R> {
+    let input = elem_to_biguint(cops.elem_unencoded(&elem));
     let res = sqrt(&input, exp, modulus);
-    biguint_to_elem(cops, &res)
+    biguint_to_elem_unenc(id, cops, &res)
 }
 
 /// Performs an exponentiation in the underlying field that ascertains whether

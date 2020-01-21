@@ -12,7 +12,7 @@ use super::utils;
 
 pub struct HashToCurve {
 	dst: String,
-	z: u32,
+	z: Elem<R>,
 	a: Elem<R>,
 	b: Elem<R>,
 	p: BigUint,
@@ -32,7 +32,7 @@ impl HashToCurve {
         match id {
             P256 => Self {
                 dst: String::from("VOPRF-P384-SHA512-SSWU-RO-"),
-                z: 10, // should actually be negative but made positive in SSWU anyway
+                z: Self::get_z_value(id, ops, &modulus, 10),
                 m: 1,
                 l: 48,
                 a: ops.common.a,
@@ -46,7 +46,7 @@ impl HashToCurve {
             },
             P384 => Self {
                 dst: String::from("VOPRF-P384-SHA512-SSWU-RO-"),
-                z: 12, // should actually be negative but made positive in SSWU anyway
+                z: Self::get_z_value(id, ops, &modulus, 12),
                 m: 1,
                 l: 72,
                 a: ops.common.a,
@@ -68,9 +68,7 @@ impl HashToCurve {
         let cops = self.ops.common;
         // if length is greater than 1 then something bad is happening
         assert!(u_vec.len() == 1);
-        let u = utils::biguint_to_elem(cops, &u_vec[0]);
-        let minus_z_bu = BigUint::from(self.z);
-        let minus_z = utils::biguint_to_elem_unenc(self.id, cops, &minus_z_bu);
+        let u = utils::biguint_to_elem_unenc(self.id, cops, &u_vec[0]);
 
         // c1 = -b/a
         let a_inv = utils::invert_elem(&ops, self.a);
@@ -78,15 +76,21 @@ impl HashToCurve {
         let c1 = cops.elem_product(&self.b, &minus_a_inv);
 
         // c2 = -1/z
-        // NOTE: we use -z in HashToCurve so we don't need to use minus again here
-        let c2 = utils::invert_elem(&ops, minus_z);
+        // NOTE: we use -z in HashToCurve so we don't need to use minus again
+        // here
+        let z_inv = utils::invert_elem(&ops, self.z);
+        let c2 = utils::minus_elem(&cops, &self.p, z_inv);
 
         // 1. t1 = z * u^2
         let uu = cops.elem_squared(&u);
-        let z = utils::minus_elem(cops, &self.p, minus_z);
-        let t1 = cops.elem_product(&z, &uu);
+        let t1 = cops.elem_product(&self.z, &uu);
 
         let mut t2 = cops.elem_squared(&t1); // 2. t2 = t1^2
+        // correct up to here I think
+        // c1: e665ba8d4b6a4d4c32da01cea152b9b30809decfaa2b15b0abb1582fc55bd7c8421cbdd92e0f9b346381eda546a40e4f
+        // c2: 15555555555555555555555555555555555555555555555555555555555555553fffffffeaaaaaaaaaaaaaaac0000000
+        // t1: c26022e6d5be3df6379ef384ac4c50fed3bba6f09242eaabce2164ae1ef680ab889a782e408ae5716c4ebcc2dfb20e3f
+        // t2: e936fcad1c357af9f555704c358792ea7ba9e9ccf5a1ae5a6c15f2e367766b98d5685951009ece0586eb85d110e566b8
 
         // 3. x1 = t1 + t2
         let mut x1 = t1;
@@ -98,24 +102,31 @@ impl HashToCurve {
         x1 = utils::elem_cmov(cops, x1, c2, e1); // 7. x1 = cmov(x1, c2, e1)
         x1 = cops.elem_product(&x1, &c1); // 8. x1 = x1 * c1
         let mut gx1 = cops.elem_squared(&x1); // 9. gx1 = x1^2
+        // x1 is correct here: 61bca803825ab22e152cf21e4b689202bd9a6a4da6aba980398a64b5a753deda495772213ccfbb8d4df1a86725272463
         cops.elem_add(&mut gx1, &self.a); // 10. gx1 = gx1 + a
         gx1 = cops.elem_product(&gx1, &x1); // 11. gx1 = gx1 * x1
         cops.elem_add(&mut gx1, &self.b); // 12. gx1 = gx1 + b
+        // gx1 is correct here: 3a06bffe25d0e7752fbdfff1ae5a51cd23e254e982498a8c79a39ef6862fc52f812491b03175bbcc50551208eeeb8028
         let x2 = cops.elem_product(&t1, &x1); // 13. x2 = t1 * x1
         t2 = cops.elem_product(&t1, &t2); // 14. t2 = t1 * t2
         let gx2 = cops.elem_product(&gx1, &t2); // 15. gx2 = gx1 * t2
+        // gx2 is correct here: a8726b84161bc566640bc14877731c02ce8c290f76bfcbb152a7243b4721ee1491f9ff50485092976b00738b7fe0e303
         let e2 = utils::is_square(&utils::elem_to_biguint(gx1),
                             &self.is_sq_exp, &self.p); // 16. e2 = is_square(gx1)
         let x = utils::elem_cmov(cops, x2, x1, e2); // 17. x = cmov(x2, x1, e2)
         let yy = utils::elem_cmov(cops, gx2, gx1, e2); // 18. x = cmov(gx2, gx1, e2)
-        let mut y = utils::elem_sqrt(cops, yy, &self.sqrt_exp, &self.p); // 19. y = sqrt(yy)
+        println!("yy: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&yy))));
+        let mut y = utils::elem_sqrt(self.id, cops, yy, &self.sqrt_exp, &self.p); // 19. y = sqrt(yy)
+        println!("y: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&y))));
 
         // 20. sgn0(u) == sgn0(y)
         let u_sgn = utils::sgn0_le(&utils::elem_to_bytes(u));
         let y_sgn = utils::sgn0_le(&utils::elem_to_bytes(y));
         let e3 = u_sgn == y_sgn;
+        println!("e3: {:?}", e3);
 
         y = utils::elem_cmov(cops, utils::minus_elem(cops, &self.p, y), y, e3); // 21. y = cmov(-y, y, e3x)
+        println!("y: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&y))));
 
         // construct point output object
         let mut point = AffinePoint::new(self.id);
@@ -123,6 +134,11 @@ impl HashToCurve {
         point.y = utils::elem_to_biguint(y);
         assert!(point.is_valid());
         point
+    }
+
+    /// returns the appropriate z value
+    fn get_z_value(id: CurveID, ops: &CurveOps, p: &BigUint, minus_z: u32) -> Elem<R> {
+        utils::minus_elem(ops.common, p, utils::biguint_to_elem_unenc(id, ops.common, &BigUint::from(minus_z)))
     }
 }
 
@@ -140,7 +156,7 @@ mod tests {
             let exp_x = BigUint::parse_bytes(vector[1].as_bytes(), 10).unwrap();
             let exp_y = BigUint::parse_bytes(vector[2].as_bytes(), 10).unwrap();
             let u_vec = vec!(input);
-            let point = h2c.sswu(&u_vec);
+            let point = h2c.sswu(&u_vec).to_unencoded();
             assert_eq!(hex::encode(point.x.to_bytes_be()), hex::encode(exp_x.to_bytes_be()));
             assert_eq!(hex::encode(point.y.to_bytes_be()), hex::encode(exp_y.to_bytes_be()));
         }
