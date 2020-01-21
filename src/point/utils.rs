@@ -4,7 +4,7 @@ use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
+use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar,Modulus};
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
@@ -56,11 +56,19 @@ pub fn sgn0_le(x: &[u8]) -> i8 {
     i8::conditional_select(&sgn, &1, zero_cmp_2.into())
 }
 
+/// Returns the curve modulus (montgomery encoded) for performing modular
+/// operations
+pub fn get_modulus_as_biguint(q: &Modulus) -> BigUint {
+    let p: Elem<R> = Elem {
+        limbs: q.p,
+        m: PhantomData,
+        encoding: PhantomData
+    };
+    elem_to_biguint(p)
+}
+
 pub fn biguint_to_scalar(cops: &CommonOps, x: &BigUint) -> Scalar {
-    let x_bytes = x.to_bytes_be();
-    let MAX_LEN = cops.num_limbs*LIMB_BYTES;
-    let mut inp = vec![0; MAX_LEN];
-    inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
+    let inp = get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES);
     scalar_parse_big_endian_fixed_consttime(cops, untrusted::Input::from(&inp)).unwrap()
 }
 
@@ -68,8 +76,8 @@ pub fn biguint_to_scalar(cops: &CommonOps, x: &BigUint) -> Scalar {
 /// been encoded
 ///
 /// TODO: come up with better error type!!
-pub fn biguint_to_elem_unenc(id: CurveID, x: &BigUint) -> Elem<R> {
-    let bytes = x.to_bytes_be();
+pub fn biguint_to_elem_unenc(id: CurveID, cops: &CommonOps, x: &BigUint) -> Elem<R> {
+    let bytes = get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES);
     let input = untrusted::Input::from(&bytes);
     input.read_all(Unspecified, |input| {
         Ok(
@@ -83,11 +91,7 @@ pub fn biguint_to_elem_unenc(id: CurveID, x: &BigUint) -> Elem<R> {
 }
 
 pub fn biguint_to_elem(cops: &CommonOps, x: &BigUint) -> Elem<R> {
-    let x_bytes = x.to_bytes_be();
-    let MAX_LEN = cops.num_limbs*LIMB_BYTES;
-    let mut inp = vec![0; MAX_LEN];
-    inp[MAX_LEN-x_bytes.len()..].copy_from_slice(&x_bytes);
-    bytes_to_elem(cops, &inp)
+    bytes_to_elem(cops, &get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES))
 }
 
 pub fn elem_to_biguint<T: RingEncoding>(elem: Elem<T>) -> BigUint {
@@ -124,14 +128,47 @@ pub fn invert_elem(ops: &CurveOps, x: Elem<R>) -> Elem<R> {
     ops.common.elem_product(&xx_inv, &x)
 }
 
+pub fn elem_one(id: CurveID, cops: &CommonOps) -> Elem<R> {
+    biguint_to_elem_unenc(id, cops, &BigUint::one())
+}
+
+/// returns a new vector that is filled with 0's up to `fill_len` length
+fn get_filled_buffer(unfilled: &[u8], fill_len: usize) -> Vec<u8> {
+    let mut wrapper = vec![0; fill_len];
+    wrapper[fill_len-unfilled.len()..].copy_from_slice(unfilled);
+    wrapper
+}
+
 /// Performs a square root operation in the underlying field using the input
 /// exponent
 pub fn sqrt(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
     input.modpow(exp, modulus)
 }
 
+/// Performs a square root operation in the underlying field using the input
+/// exponent
+pub fn elem_sqrt(cops: &CommonOps, elem: Elem<R>, exp: &BigUint, modulus: &BigUint) -> Elem<R> {
+    let input = elem_to_biguint(elem);
+    let res = sqrt(&input, exp, modulus);
+    biguint_to_elem(cops, &res)
+}
+
 /// Performs an exponentiation in the underlying field that ascertains whether
 /// the current element is a square, or not.
-pub fn is_square(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
-    input.modpow(exp, modulus)
+pub fn is_square(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> bool {
+    let res = input.modpow(exp, modulus);
+    let c = res == Zero::zero();
+    let d = res == One::one();
+    c || d
+}
+
+/// Returns `a` if `c` is `false`, and `b` if c is `true`
+///
+/// TODO: remove BigUint operations
+pub fn elem_cmov(cops: &CommonOps, a: Elem<R>, b: Elem<R>, c: bool) -> Elem<R> {
+    let c_bu = BigUint::from(c as u8);
+    let a_bu = elem_to_biguint(a);
+    let b_bu = elem_to_biguint(b);
+    let res = (&c_bu * b_bu) + ((BigUint::one() - &c_bu) * a_bu);
+    biguint_to_elem(cops, &res)
 }

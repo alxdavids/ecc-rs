@@ -89,7 +89,7 @@ use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
 
-// mod h2c;
+mod h2c;
 mod utils;
 
 /// P256 constant for exposing *ring* CurveID::P256 enum
@@ -283,7 +283,7 @@ impl AffinePoint<Encoded> {
             },
             0x02 | 0x03 => {
                 assert_eq!(input.len(), coord_byte_length+1);
-                let x_enc = utils::biguint_to_elem_unenc(self.id, &x);
+                let x_enc = utils::biguint_to_elem_unenc(self.id, cops, &x);
                 let xx_enc = self.ops.common.elem_squared(&x_enc);
                 let scalar_ops = match self.id {
                     P256 => &P256_SCALAR_OPS,
@@ -300,7 +300,7 @@ impl AffinePoint<Encoded> {
                                             );
                 // perform square root
                 // (TODO: don't do BigUint ops as they are not constant time)
-                let q = self.get_curve_modulus_as_biguint();
+                let q = utils::get_modulus_as_biguint(&self.ops.common.q);
                 let sqrt_exp = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
                 let y_sqrt = utils::sqrt(&utils::elem_to_biguint(yy_unenc), &sqrt_exp, &q);
                 let y_sqrt_bytes = y_sqrt.to_bytes_be();
@@ -351,7 +351,7 @@ impl AffinePoint<Encoded> {
     fn get_minus_y_point(&self) -> Self {
         Self {
             x: self.x.clone(),
-            y: self.get_curve_modulus_as_biguint() - &self.y,
+            y: utils::get_modulus_as_biguint(&self.ops.common.q) - &self.y,
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
@@ -373,17 +373,6 @@ impl AffinePoint<Encoded> {
         aff.y = utils::elem_to_biguint(pt.1);
         aff
     }
-
-    /// Returns the curve modulus (montgomery encoded) for performing modular
-    /// operations
-    fn get_curve_modulus_as_biguint(&self) -> BigUint {
-        let p: Elem<R> = Elem {
-            limbs: self.ops.common.q.p,
-            m: PhantomData,
-            encoding: PhantomData
-        };
-        utils::elem_to_biguint(p)
-    }
 }
 
 impl AffinePoint<Unencoded> {
@@ -391,8 +380,8 @@ impl AffinePoint<Unencoded> {
     /// performing group operations.
     fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
-            x: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, &self.x)),
-            y: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, &self.y)),
+            x: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.x)),
+            y: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.y)),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
