@@ -231,44 +231,8 @@ impl PublicKeyOps {
     }
 }
 
-// Operations used by both ECDSA signing and ECDSA verification. In general
-// these must be side-channel resistant.
-pub struct ScalarOps {
-    pub common: &'static CommonOps,
-
-    scalar_inv_to_mont_impl: fn(a: &Scalar) -> Scalar<R>,
-    scalar_mul_mont: unsafe extern "C" fn(r: *mut Limb, a: *const Limb, b: *const Limb),
-}
-
-impl ScalarOps {
-    // The (maximum) length of a scalar, not including any padding.
-    pub fn scalar_bytes_len(&self) -> usize {
-        self.common.num_limbs * LIMB_BYTES
-    }
-
-    /// Returns the modular inverse of `a` (mod `n`). Panics of `a` is zero,
-    /// because zero isn't invertible.
-    pub fn scalar_inv_to_mont(&self, a: &Scalar) -> Scalar<R> {
-        assert!(!self.common.is_zero(a));
-        (self.scalar_inv_to_mont_impl)(a)
-    }
-
-    #[inline]
-    pub fn scalar_product<EA: Encoding, EB: Encoding>(
-        &self,
-        a: &Scalar<EA>,
-        b: &Scalar<EB>,
-    ) -> Scalar<<(EA, EB) as ProductEncoding>::Output>
-    where
-        (EA, EB): ProductEncoding,
-    {
-        mul_mont(self.scalar_mul_mont, a, b)
-    }
-}
-
 /// Operations on public scalars needed by ECDSA signature verification.
 pub struct PublicScalarOps {
-    pub scalar_ops: &'static ScalarOps,
     pub public_key_ops: &'static PublicKeyOps,
 
     // XXX: `PublicScalarOps` shouldn't depend on `PrivateKeyOps`, but it does
@@ -280,39 +244,9 @@ pub struct PublicScalarOps {
 
 impl PublicScalarOps {
     #[inline]
-    pub fn scalar_as_elem(&self, a: &Scalar) -> Elem<Unencoded> {
-        Elem {
-            limbs: a.limbs,
-            m: PhantomData,
-            encoding: PhantomData,
-        }
-    }
-
-    pub fn elem_equals(&self, a: &Elem<Unencoded>, b: &Elem<Unencoded>) -> bool {
-        for i in 0..self.public_key_ops.common.num_limbs {
-            if a.limbs[i] != b.limbs[i] {
-                return false;
-            }
-        }
-        true
-    }
-
-    pub fn elem_less_than(&self, a: &Elem<Unencoded>, b: &Elem<Unencoded>) -> bool {
-        let num_limbs = self.public_key_ops.common.num_limbs;
-        limbs_less_than_limbs_vartime(&a.limbs[..num_limbs], &b.limbs[..num_limbs])
-    }
-
-    #[inline]
     pub fn elem_sum(&self, a: &Elem<Unencoded>, b: &Elem<Unencoded>) -> Elem<Unencoded> {
         binary_op(self.public_key_ops.common.elem_add_impl, a, b)
     }
-}
-
-#[allow(non_snake_case)]
-pub struct PrivateScalarOps {
-    pub scalar_ops: &'static ScalarOps,
-
-    pub oneRR_mod_n: Scalar<RR>, // 1 * R**2 (mod n). TOOD: Use One<RR>.
 }
 
 // This assumes n < q < 2*n.
@@ -448,23 +382,6 @@ mod tests {
         m: PhantomData,
         encoding: PhantomData,
     };
-
-    fn q_minus_n_plus_n_equals_0_test(ops: &PublicScalarOps) {
-        let cops = ops.scalar_ops.common;
-        let mut x = ops.q_minus_n;
-        cops.elem_add(&mut x, &cops.n);
-        assert!(cops.is_zero(&x));
-    }
-
-    #[test]
-    fn p256_q_minus_n_plus_n_equals_0_test() {
-        q_minus_n_plus_n_equals_0_test(&p256::PUBLIC_SCALAR_OPS);
-    }
-
-    #[test]
-    fn p384_q_minus_n_plus_n_equals_0_test() {
-        q_minus_n_plus_n_equals_0_test(&p384::PUBLIC_SCALAR_OPS);
-    }
 
     #[test]
     fn p256_elem_add_test() {
@@ -670,95 +587,6 @@ mod tests {
 
             Ok(())
         })
-    }
-
-    #[test]
-    fn p256_scalar_mul_test() {
-        scalar_mul_test(
-            &p256::SCALAR_OPS,
-            test_file!("ops/p256_scalar_mul_tests.txt"),
-        );
-    }
-
-    #[test]
-    fn p384_scalar_mul_test() {
-        scalar_mul_test(
-            &p384::SCALAR_OPS,
-            test_file!("ops/p384_scalar_mul_tests.txt"),
-        );
-    }
-
-    fn scalar_mul_test(ops: &ScalarOps, test_file: test::File) {
-        test::run(test_file, |section, test_case| {
-            assert_eq!(section, "");
-            let cops = ops.common;
-            let mut a = consume_scalar(cops, test_case, "a");
-            let b = consume_scalar_mont(cops, test_case, "b");
-            let expected_result = consume_scalar(cops, test_case, "r");
-            let actual_result = ops.scalar_product(&mut a, &b);
-            assert_limbs_are_equal(cops, &actual_result.limbs, &expected_result.limbs);
-
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn p256_scalar_square_test() {
-        extern "C" {
-            fn GFp_p256_scalar_sqr_rep_mont(r: *mut Limb, a: *const Limb, rep: Limb);
-        }
-        scalar_square_test(
-            &p256::SCALAR_OPS,
-            GFp_p256_scalar_sqr_rep_mont,
-            test_file!("ops/p256_scalar_square_tests.txt"),
-        );
-    }
-
-    // XXX: There's no `p384_scalar_square_test()` because there's no dedicated
-    // `GFp_p384_scalar_sqr_rep_mont()`.
-
-    fn scalar_square_test(
-        ops: &ScalarOps,
-        sqr_rep: unsafe extern "C" fn(r: *mut Limb, a: *const Limb, rep: Limb),
-        test_file: test::File,
-    ) {
-        test::run(test_file, |section, test_case| {
-            assert_eq!(section, "");
-            let cops = &ops.common;
-            let a = consume_scalar(cops, test_case, "a");
-            let expected_result = consume_scalar(cops, test_case, "r");
-
-            {
-                let mut actual_result: Scalar<R> = Scalar {
-                    limbs: [0; MAX_LIMBS],
-                    m: PhantomData,
-                    encoding: PhantomData,
-                };
-                unsafe {
-                    sqr_rep(actual_result.limbs.as_mut_ptr(), a.limbs.as_ptr(), 1);
-                }
-                assert_limbs_are_equal(cops, &actual_result.limbs, &expected_result.limbs);
-            }
-
-            {
-                let actual_result = ops.scalar_product(&a, &a);
-                assert_limbs_are_equal(cops, &actual_result.limbs, &expected_result.limbs);
-            }
-
-            Ok(())
-        })
-    }
-
-    #[test]
-    #[should_panic(expected = "!self.common.is_zero(a)")]
-    fn p256_scalar_inv_to_mont_zero_panic_test() {
-        let _ = p256::SCALAR_OPS.scalar_inv_to_mont(&ZERO_SCALAR);
-    }
-
-    #[test]
-    #[should_panic(expected = "!self.common.is_zero(a)")]
-    fn p384_scalar_inv_to_mont_zero_panic_test() {
-        let _ = p384::SCALAR_OPS.scalar_inv_to_mont(&ZERO_SCALAR);
     }
 
     #[test]

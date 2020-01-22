@@ -135,14 +135,7 @@ pub static PUBLIC_KEY_OPS: PublicKeyOps = PublicKeyOps {
     common: &COMMON_OPS,
 };
 
-pub static SCALAR_OPS: ScalarOps = ScalarOps {
-    common: &COMMON_OPS,
-    scalar_inv_to_mont_impl: p256_scalar_inv_to_mont,
-    scalar_mul_mont: GFp_p256_scalar_mul_mont,
-};
-
 pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
-    scalar_ops: &SCALAR_OPS,
     public_key_ops: &PUBLIC_KEY_OPS,
     private_key_ops: &PRIVATE_KEY_OPS,
 
@@ -150,19 +143,6 @@ pub static PUBLIC_SCALAR_OPS: PublicScalarOps = PublicScalarOps {
         limbs: p256_limbs![0x039cdaae, 0x0c46353d, 0x58e8617b, 0x43190553, 0, 0, 0, 0],
         m: PhantomData,
         encoding: PhantomData, // Unencoded
-    },
-};
-
-pub static PRIVATE_SCALAR_OPS: PrivateScalarOps = PrivateScalarOps {
-    scalar_ops: &SCALAR_OPS,
-
-    oneRR_mod_n: Scalar {
-        limbs: p256_limbs![
-            0xbe79eea2, 0x83244c95, 0x49bd6fa6, 0x4699799c, 0x2b6bec59, 0x2845b239, 0xf3d95620,
-            0x66e12d94
-        ],
-        m: PhantomData,
-        encoding: PhantomData, // R
     },
 };
 
