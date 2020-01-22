@@ -66,6 +66,17 @@
 //! let ser_cmp = gen.serialize(true);
 //! let deser_cmp = (AffinePoint::new(P256)).deserialize(&ser_cmp);
 //! ```
+//!
+//! Get deterministic (randomly distributed) curve points using arbitrary input
+//! bytes (see https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05 for
+//! full spec):
+//!
+//! ```
+//! use ecc_rs::point::*;
+//! let p = AffinePoint::new(P256);
+//! let r = p.hash_to_curve("some_input".as_bytes());
+//! assert!(r.is_valid());
+//! ```
 
 use num::{BigUint,BigInt,Zero};
 use num_bigint::ToBigInt;
@@ -624,6 +635,13 @@ mod tests {
             assert_eq!(deser_cmp.is_valid(), true, "compressed point validity check for {:?}", id);
             assert_eq!(deser_cmp.equals(gen), true, "compressed point equality check for {:?}", id);
         }
+    }
+
+    #[test]
+    fn hash_to_curve() {
+        let p = AffinePoint::new(P256);
+        let r = p.hash_to_curve("some_input".as_bytes());
+        assert!(r.is_valid());
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/

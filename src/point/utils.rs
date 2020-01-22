@@ -55,6 +55,7 @@ pub fn sgn0_le(x: &[u8]) -> i8 {
     i8::conditional_select(&sgn, &1, zero_cmp_2.into())
 }
 
+/// runs sgn_le with initial *ring* input type of `Elem<R>`
 pub fn sgn0_le_elem(cops: &CommonOps, x: Elem<R>) -> i8 {
     sgn0_le(&elem_to_bytes(cops.elem_unencoded(&x)))
 }
