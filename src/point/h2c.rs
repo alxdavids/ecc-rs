@@ -115,18 +115,14 @@ impl HashToCurve {
                             &self.is_sq_exp, &self.p); // 16. e2 = is_square(gx1)
         let x = utils::elem_cmov(cops, x2, x1, e2); // 17. x = cmov(x2, x1, e2)
         let yy = utils::elem_cmov(cops, gx2, gx1, e2); // 18. x = cmov(gx2, gx1, e2)
-        println!("yy: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&yy))));
         let mut y = utils::elem_sqrt(self.id, cops, yy, &self.sqrt_exp, &self.p); // 19. y = sqrt(yy)
-        println!("y: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&y))));
 
         // 20. sgn0(u) == sgn0(y)
-        let u_sgn = utils::sgn0_le(&utils::elem_to_bytes(u));
-        let y_sgn = utils::sgn0_le(&utils::elem_to_bytes(y));
+        let u_sgn = utils::sgn0_le_elem(cops, u);
+        let y_sgn = utils::sgn0_le_elem(cops, y);
         let e3 = u_sgn == y_sgn;
-        println!("e3: {:?}", e3);
 
         y = utils::elem_cmov(cops, utils::minus_elem(cops, &self.p, y), y, e3); // 21. y = cmov(-y, y, e3x)
-        println!("y: {:?}", hex::encode(utils::elem_to_bytes(cops.elem_unencoded(&y))));
 
         // construct point output object
         let mut point = AffinePoint::new(self.id);
@@ -151,14 +147,16 @@ mod tests {
     #[test]
     fn sswu_test() {
         let h2c = HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common.q));
+        let mut count = 0;
         for vector in SSWU_TEST_VECTORS.iter() {
             let input = BigUint::parse_bytes(vector[0].as_bytes(), 10).unwrap();
             let exp_x = BigUint::parse_bytes(vector[1].as_bytes(), 10).unwrap();
             let exp_y = BigUint::parse_bytes(vector[2].as_bytes(), 10).unwrap();
             let u_vec = vec!(input);
             let point = h2c.sswu(&u_vec).to_unencoded();
-            assert_eq!(hex::encode(point.x.to_bytes_be()), hex::encode(exp_x.to_bytes_be()));
-            assert_eq!(hex::encode(point.y.to_bytes_be()), hex::encode(exp_y.to_bytes_be()));
+            assert_eq!(hex::encode(point.x.to_bytes_be()), hex::encode(exp_x.to_bytes_be()), "x test for count: {:?}", count);
+            assert_eq!(hex::encode(point.y.to_bytes_be()), hex::encode(exp_y.to_bytes_be()), "y test for count: {:?}", count);
+            count = count+1;
         }
     }
 

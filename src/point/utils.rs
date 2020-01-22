@@ -56,6 +56,10 @@ pub fn sgn0_le(x: &[u8]) -> i8 {
     i8::conditional_select(&sgn, &1, zero_cmp_2.into())
 }
 
+pub fn sgn0_le_elem(cops: &CommonOps, x: Elem<R>) -> i8 {
+    sgn0_le(&elem_to_bytes(cops.elem_unencoded(&x)))
+}
+
 /// Returns the curve modulus (montgomery encoded) for performing modular
 /// operations
 pub fn get_modulus_as_biguint(q: &Modulus) -> BigUint {
