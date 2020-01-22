@@ -99,6 +99,8 @@ use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
+use ring_ecc::rand;
+use rand::sealed::SecureRandom;
 
 mod h2c;
 mod utils;
@@ -348,6 +350,18 @@ impl AffinePoint<Encoded> {
     pub fn hash_to_curve(&self, alpha: &[u8]) -> Self {
         let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common));
         h2c.full(alpha)
+    }
+
+    /// Returns a uniform number of bytes equal to the length of elements in the
+    /// base field
+    pub fn uniform_bytes_from_field(&self) -> Vec<u8> {
+        let fill_len = self.ops.common.num_limbs*LIMB_BYTES;
+        let mut out = vec![0; fill_len];
+        let rng = rand::SystemRandom::new();
+        if let Err(_) = rng.fill_impl(&mut out) {
+            panic!("error filling")
+        }
+        out
     }
 
     /// Returns the `AffinePoint` object in unencoded format, removing the
@@ -639,9 +653,20 @@ mod tests {
 
     #[test]
     fn hash_to_curve() {
-        let p = AffinePoint::new(P256);
-        let r = p.hash_to_curve("some_input".as_bytes());
-        assert!(r.is_valid());
+        for &id in [P256,P384].iter() {
+            let p = AffinePoint::new(id);
+            let r = p.hash_to_curve("some_input".as_bytes());
+            assert!(r.is_valid(), "curve: {:?}", id);
+        }
+    }
+
+    #[test]
+    fn uniform_bytes() {
+        for &id in [P256,P384].iter() {
+            let p = AffinePoint::new(id);
+            let out = p.uniform_bytes_from_field();
+            assert_eq!(out.len(), p.ops.common.num_limbs*LIMB_BYTES, "curve: {:?}", id);
+        }
     }
 
     // taken from test vectors at ring_ecc/ec/suite_b/ops/
