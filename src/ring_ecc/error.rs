@@ -98,50 +98,6 @@ impl KeyRejected {
     pub fn description_(&self) -> &'static str {
         self.0
     }
-
-    pub(crate) fn inconsistent_components() -> Self {
-        KeyRejected("InconsistentComponents")
-    }
-
-    pub(crate) fn invalid_component() -> Self {
-        KeyRejected("InvalidComponent")
-    }
-
-    #[inline]
-    pub(crate) fn invalid_encoding() -> Self {
-        KeyRejected("InvalidEncoding")
-    }
-
-    pub(crate) fn public_key_is_missing() -> Self {
-        KeyRejected("PublicKeyIsMissing")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn too_small() -> Self {
-        KeyRejected("TooSmall")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn too_large() -> Self {
-        KeyRejected("TooLarge")
-    }
-
-    pub(crate) fn version_not_supported() -> Self {
-        KeyRejected("VersionNotSupported")
-    }
-
-    pub(crate) fn wrong_algorithm() -> Self {
-        KeyRejected("WrongAlgorithm")
-    }
-
-    #[cfg(feature = "alloc")]
-    pub(crate) fn private_modulus_len_not_multiple_of_512_bits() -> Self {
-        KeyRejected("PrivateModulusLenNotMultipleOf512Bits")
-    }
-
-    pub(crate) fn unexpected_error() -> Self {
-        KeyRejected("UnexpectedError")
-    }
 }
 
 #[cfg(feature = "std")]

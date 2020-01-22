@@ -19,52 +19,6 @@
 /// tries to read the cached values before they are written.
 ///
 /// This is a zero-sized type so that it can be "stored" wherever convenient.
-#[derive(Copy, Clone)]
-pub(crate) struct Features(());
-
-#[inline(always)]
-pub(crate) fn features() -> Features {
-    // We don't do runtime feature detection on iOS. instead some features are
-    // assumed to be present; see `arm::Feature`.
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "arm",
-            target_arch = "x86",
-            target_arch = "x86_64"
-        ),
-        not(target_os = "ios")
-    ))]
-    {
-        static INIT: spin::Once<()> = spin::Once::new();
-        let () = INIT.call_once(|| {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            {
-                extern "C" {
-                    fn GFp_cpuid_setup();
-                }
-                unsafe {
-                    GFp_cpuid_setup();
-                }
-            }
-
-            #[cfg(all(
-                any(target_os = "android", target_os = "linux"),
-                any(target_arch = "aarch64", target_arch = "arm")
-            ))]
-            {
-                arm::linux_setup();
-            }
-
-            #[cfg(all(target_os = "fuchsia", any(target_arch = "aarch64")))]
-            {
-                arm::fuchsia_setup();
-            }
-        });
-    }
-
-    Features(())
-}
 
 pub(crate) mod arm {
     #[cfg(all(

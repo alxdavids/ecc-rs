@@ -36,78 +36,6 @@ pub fn verify_affine_point_is_on_the_curve(
     verify_affine_point_is_on_the_curve_scaled(ops, (x, y), &ops.a, &ops.b)
 }
 
-// Use `verify_affine_point_is_on_the_curve` instead of this function whenever
-// the affine coordinates are available or will become available. This function
-// should only be used then the affine coordinates are never calculated. See
-// the notes for `verify_affine_point_is_on_the_curve_scaled`.
-//
-// The value `z**2` is returned on success because it is useful for ECDSA
-// verification.
-//
-// This function also verifies that the point is not at infinity.
-pub fn verify_jacobian_point_is_on_the_curve(
-    ops: &CommonOps,
-    p: &Point,
-) -> Result<Elem<R>, error::Unspecified> {
-    let z = ops.point_z(p);
-
-    // Verify that the point is not at infinity.
-    ops.elem_verify_is_not_zero(&z)?;
-
-    let x = ops.point_x(p);
-    let y = ops.point_y(p);
-
-    // We are given Jacobian coordinates (x, y, z). So, we have:
-    //
-    //    (x/z**2, y/z**3) == (x', y'),
-    //
-    // where (x', y') are the affine coordinates. The curve equation is:
-    //
-    //     y'**2  ==  x'**3 + a*x' + b  ==  (x'**2 + a)*x' + b
-    //
-    // Substituting our Jacobian coordinates, we get:
-    //
-    //    /   y  \**2       /  /   x  \**2       \   /   x  \
-    //    | ---- |      ==  |  | ---- |    +  a  | * | ---- |  +  b
-    //    \ z**3 /          \  \ z**2 /          /   \ z**2 /
-    //
-    // Simplify:
-    //
-    //            y**2      / x**2       \     x
-    //            ----  ==  | ----  +  a | * ----  +  b
-    //            z**6      \ z**4       /   z**2
-    //
-    // Multiply both sides by z**6:
-    //
-    //     z**6             / x**2       \   z**6
-    //     ---- * y**2  ==  | ----  +  a | * ---- * x  +  (z**6) * b
-    //     z**6             \ z**4       /   z**2
-    //
-    // Simplify:
-    //
-    //                      / x**2       \
-    //            y**2  ==  | ----  +  a | * z**4 * x  +  (z**6) * b
-    //                      \ z**4       /
-    //
-    // Distribute z**4:
-    //
-    //                      / z**4                     \
-    //            y**2  ==  | ---- * x**2  +  z**4 * a | * x  +  (z**6) * b
-    //                      \ z**4                     /
-    //
-    // Simplify:
-    //
-    //            y**2  ==  (x**2  +  z**4 * a) * x  +  (z**6) * b
-    //
-    let z2 = ops.elem_squared(&z);
-    let z4 = ops.elem_squared(&z2);
-    let z4_a = ops.elem_product(&z4, &ops.a);
-    let z6 = ops.elem_product(&z4, &z2);
-    let z6_b = ops.elem_product(&z6, &ops.b);
-    verify_affine_point_is_on_the_curve_scaled(ops, (&x, &y), &z4_a, &z6_b)?;
-    Ok(z2)
-}
-
 // Handles the common logic of point-is-on-the-curve checks for both affine and
 // Jacobian cases.
 //
@@ -153,7 +81,6 @@ fn verify_affine_point_is_on_the_curve_scaled(
     Ok(())
 }
 
-pub mod curve;
 pub mod ops;
 
 pub mod private_key;

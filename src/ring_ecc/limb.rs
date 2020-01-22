@@ -70,39 +70,10 @@ pub fn limbs_are_zero_constant_time(limbs: &[Limb]) -> LimbMask {
     unsafe { LIMBS_are_zero(limbs.as_ptr(), limbs.len()) }
 }
 
-/// Equivalent to `if (r >= m) { r -= m; }`
-#[inline]
-pub fn limbs_reduce_once_constant_time(r: &mut [Limb], m: &[Limb]) {
-    assert_eq!(r.len(), m.len());
-    unsafe { LIMBS_reduce_once(r.as_mut_ptr(), m.as_ptr(), m.len()) };
-}
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum AllowZero {
     No,
     Yes,
-}
-
-/// Parses `input` into `result`, reducing it via conditional subtraction
-/// (mod `m`). Assuming 2**((self.num_limbs * LIMB_BITS) - 1) < m and
-/// m < 2**(self.num_limbs * LIMB_BITS), the value will be reduced mod `m` in
-/// constant time so that the result is in the range [0, m) if `allow_zero` is
-/// `AllowZero::Yes`, or [1, m) if `allow_zero` is `AllowZero::No`. `result` is
-/// padded with zeros to its length.
-pub fn parse_big_endian_in_range_partially_reduced_and_pad_consttime(
-    input: untrusted::Input,
-    allow_zero: AllowZero,
-    m: &[Limb],
-    result: &mut [Limb],
-) -> Result<(), error::Unspecified> {
-    parse_big_endian_and_pad_consttime(input, result)?;
-    limbs_reduce_once_constant_time(result, m);
-    if allow_zero != AllowZero::Yes {
-        if limbs_are_zero_constant_time(&result) != LimbMask::False {
-            return Err(error::Unspecified);
-        }
-    }
-    Ok(())
 }
 
 /// Parses `input` into `result`, verifies that the value is less than
@@ -196,7 +167,6 @@ pub fn big_endian_from_limbs(limbs: &[Limb], out: &mut [u8]) {
 extern "C" {
     fn LIMBS_are_zero(a: *const Limb, num_limbs: c::size_t) -> LimbMask;
     fn LIMBS_less_than(a: *const Limb, b: *const Limb, num_limbs: c::size_t) -> LimbMask;
-    fn LIMBS_reduce_once(r: *mut Limb, m: *const Limb, num_limbs: c::size_t);
 }
 
 #[cfg(test)]

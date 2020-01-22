@@ -379,32 +379,11 @@ impl AffinePoint<Encoded> {
         }
     }
 
-    /// Returns a new `AffinePoint` object (montgomery encoded) with self.y =
-    /// -y.
-    fn get_minus_y_point(&self) -> Self {
-        Self {
-            x: self.x.clone(),
-            y: utils::get_modulus_as_biguint(&self.ops.common) - &self.y,
-            id: self.id,
-            ops: self.ops,
-            encoding: PhantomData,
-        }
-    }
-
     /// Returns the affine coordinates of the point in the format used by
     /// *ring*. This is used when performing operations using the *ring*
     /// internals
     fn as_ring_affine(&self) -> (Elem<R>, Elem<R>) {
         (utils::biguint_to_elem(self.ops.common, &self.x), utils::biguint_to_elem(self.ops.common, &self.y))
-    }
-
-    /// Converts the *ring* representation of coordinates back into the BigUint
-    /// representation
-    fn from_ring_affine(pt: (Elem<R>, Elem<R>), id: CurveID) -> Self {
-        let mut aff = Self::new(id);
-        aff.x = utils::elem_to_biguint(pt.0);
-        aff.y = utils::elem_to_biguint(pt.1);
-        aff
     }
 }
 
@@ -528,7 +507,17 @@ mod tests {
 
             // for some reason the *ring* test vectors use their bespoke generator
             // with the minus y coordinate
-            let test_gen = gen.get_minus_y_point();
+            fn get_minus_y_point(point: &AffinePoint<Encoded>) -> AffinePoint<Encoded> {
+                let cops = point.ops.common;
+                AffinePoint {
+                    x: point.x.clone(),
+                    y: utils::elem_to_biguint(utils::minus_elem(cops, &utils::get_modulus_as_biguint(cops), utils::biguint_to_elem(cops, &point.y))),
+                    id: point.id,
+                    ops: point.ops,
+                    encoding: PhantomData,
+                }
+            }
+            let test_gen = get_minus_y_point(&gen);
             for vector in MULT_TEST_VECTORS[i].iter() {
                 let k = BigUint::parse_bytes(vector[0].as_bytes(), 16).unwrap();
                 let aff = test_gen.scalar_mul(&k).to_affine();

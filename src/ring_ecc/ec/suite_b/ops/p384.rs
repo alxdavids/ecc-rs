@@ -88,7 +88,6 @@ pub static COMMON_OPS: CommonOps = CommonOps {
 pub static PRIVATE_KEY_OPS: PrivateKeyOps = PrivateKeyOps {
     common: &COMMON_OPS,
     elem_inv_squared: p384_elem_inv_squared,
-    point_mul_base_impl: p384_point_mul_base_impl,
     point_mul_impl: GFp_nistz384_point_mul,
 };
 
@@ -146,11 +145,6 @@ fn p384_elem_inv_squared(a: &Elem<R>) -> Elem<R> {
     COMMON_OPS.elem_square(&mut acc);
 
     acc
-}
-
-fn p384_point_mul_base_impl(a: &Scalar) -> Point {
-    // XXX: Not efficient. TODO: Precompute multiples of the generator.
-    PRIVATE_KEY_OPS.point_mul(a, &P384_GENERATOR)
 }
 
 pub static PUBLIC_KEY_OPS: PublicKeyOps = PublicKeyOps {

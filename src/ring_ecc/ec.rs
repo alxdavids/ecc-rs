@@ -14,15 +14,6 @@
 
 pub use self::keys::PublicKey;
 
-pub struct Curve {
-    pub public_key_len: usize,
-    pub elem_scalar_seed_len: usize,
-
-    pub id: CurveID
-}
-
-derive_debug_via_id!(Curve);
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CurveID {
     Curve25519,
@@ -32,9 +23,6 @@ pub enum CurveID {
 
 const ELEM_MAX_BITS: usize = 384;
 pub const ELEM_MAX_BYTES: usize = (ELEM_MAX_BITS + 7) / 8;
-
-pub const SCALAR_MAX_BYTES: usize = ELEM_MAX_BYTES;
-const SEED_MAX_BYTES: usize = ELEM_MAX_BYTES;
 
 pub mod suite_b;
 mod keys;

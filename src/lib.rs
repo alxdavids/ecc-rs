@@ -26,6 +26,7 @@
     unsafe_code
 )]
 #![deny(
+    dead_code,
     missing_docs,
     unstable_features,
     unused_qualifications,
@@ -40,8 +41,6 @@
     unused_results,
 )]
 #![cfg_attr(feature = "internal_benches", allow(unstable_features), feature(test))]
-
-#![allow(dead_code)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
