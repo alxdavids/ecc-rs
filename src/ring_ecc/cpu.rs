@@ -1,5 +1,3 @@
-#![deny(dead_code)]
-
 // Copyright 2016 Brian Smith.
 //
 // Permission to use, copy, modify, and/or distribute this software for any
