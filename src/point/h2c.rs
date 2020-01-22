@@ -9,7 +9,7 @@ use num::{BigUint,One,Zero};
 
 use super::{AffinePoint,P256,P384,Encoded};
 use super::utils;
-use super::utils::hkdf;
+use hkdf_sha512 as hkdf;
 
 pub const SSWU_RO: &'static str = "SSWU-RO";
 
