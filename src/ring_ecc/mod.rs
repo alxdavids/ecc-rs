@@ -15,7 +15,6 @@ pub(crate) mod c;
 pub mod io;
 pub mod cpu;
 
-pub mod digest;
 pub mod ec;
 pub mod endian;
 pub mod error;

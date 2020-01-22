@@ -1,5 +1,3 @@
-#![deny(dead_code)]
-
 // Copyright 2015-2016 Brian Smith.
 //
 // Permission to use, copy, modify, and/or distribute this software for any
@@ -19,11 +17,6 @@
 
 #[macro_use]
 pub mod convert;
-
-#[inline(always)]
-pub const fn u64_from_usize(x: usize) -> u64 {
-    x as u64
-}
 
 pub mod slice {
     // https://github.com/rust-lang/rust/issues/27750
