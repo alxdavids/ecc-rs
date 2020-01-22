@@ -9,15 +9,16 @@ use num::{BigUint,One,Zero};
 
 use super::{AffinePoint,P256,P384,Encoded};
 use super::utils;
+use super::utils::hkdf;
 
 pub struct HashToCurve {
-	dst: String,
+	dst: &'static str,
 	z: Elem<R>,
 	a: Elem<R>,
 	b: Elem<R>,
 	p: BigUint,
-	m: i32,
-    l: i32,
+	m: usize,
+    l: usize,
     h_eff: BigUint,
     id: CurveID,
 	is_sq_exp: BigUint,
@@ -26,12 +27,13 @@ pub struct HashToCurve {
 }
 
 impl HashToCurve {
-    fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint) -> Self {
+    /// creates a new HashToCurve object
+    pub fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint) -> Self {
         let sqrt_exp = (&modulus+BigUint::from(1_u64))/BigUint::from(4_u64); // (p+1)/4
         let is_sq_exp = (&modulus-BigUint::from(1_u64))/BigUint::from(2_u64); // (p-1)/2
         match id {
             P256 => Self {
-                dst: String::from("VOPRF-P384-SHA512-SSWU-RO-"),
+                dst: "VOPRF-P384-SHA512-SSWU-RO-",
                 z: Self::get_z_value(id, ops, &modulus, 10),
                 m: 1,
                 l: 48,
@@ -45,7 +47,7 @@ impl HashToCurve {
                 ops: ops,
             },
             P384 => Self {
-                dst: String::from("VOPRF-P384-SHA512-SSWU-RO-"),
+                dst: "VOPRF-P384-SHA512-SSWU-RO-",
                 z: Self::get_z_value(id, ops, &modulus, 12),
                 m: 1,
                 l: 72,
@@ -62,7 +64,49 @@ impl HashToCurve {
         }
     }
 
-    /// simplified swu
+    /// performs the hash_to_base algorithm, as specified in
+    /// https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05#section-5
+    fn hash_to_base(&self, msg: &[u8], ctr: u8) -> Vec<BigUint> {
+        // 1. msg_prime = HKDF-Extract(DST, msg || I2OSP(0, 1))
+        let mut exp_inp = msg.to_vec();
+        let mut oct = vec![0; 1];
+        utils::I2osp(0, 1, &mut oct);
+        exp_inp.extend_from_slice(&oct);
+        let mut msg_prime = Vec::new();
+        hkdf::extract(self.dst.as_bytes(), &exp_inp, &mut msg_prime);
+
+        // 2. info_pfx = "H2C" || I2OSP(ctr, 1)   // "H2C" is a 3-byte ASCII string
+        let mut info_pfx = Vec::new();
+        let mut ctr_buf = vec![0; 1];
+        utils::I2osp(ctr as u64, 1, &mut ctr_buf);
+        info_pfx.extend_from_slice("H2C".as_bytes());
+        info_pfx.extend_from_slice(&ctr_buf);
+
+        // 3.
+        let mut u = Vec::new();
+        for i in 1..self.m+1 {
+            // 4. info = info_pfx || I2OSP(i, 1)
+            let mut i_buf = vec![0; 1];
+            utils::I2osp(i as u64, 1, &mut i_buf);
+            let mut info = Vec::new();
+            info.extend_from_slice(&info_pfx);
+            info.extend_from_slice(&i_buf);
+
+            // 5. t = HKDF-Expand(msg_prime, info, L)
+            let mut t = vec![0; self.l];
+            hkdf::expand(&msg_prime, &info, &mut t);
+
+            // 6. e_i = OS2IP(t) mod p
+            let e_i = utils::Os2ip(&t) % &self.p;
+            u.push(e_i);
+        }
+
+        // 7. u = (e_1, ..., e_m)
+        u
+    }
+
+    /// simplified swu as described in
+    /// https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05#section-6.6.2
     fn sswu(&self, u_vec: &[BigUint]) -> AffinePoint<Encoded> {
         let ops = self.ops;
         let cops = self.ops.common;
@@ -76,8 +120,6 @@ impl HashToCurve {
         let c1 = cops.elem_product(&self.b, &minus_a_inv);
 
         // c2 = -1/z
-        // NOTE: we use -z in HashToCurve so we don't need to use minus again
-        // here
         let z_inv = utils::invert_elem(&ops, self.z);
         let c2 = utils::minus_elem(&cops, &self.p, z_inv);
 
@@ -86,11 +128,6 @@ impl HashToCurve {
         let t1 = cops.elem_product(&self.z, &uu);
 
         let mut t2 = cops.elem_squared(&t1); // 2. t2 = t1^2
-        // correct up to here I think
-        // c1: e665ba8d4b6a4d4c32da01cea152b9b30809decfaa2b15b0abb1582fc55bd7c8421cbdd92e0f9b346381eda546a40e4f
-        // c2: 15555555555555555555555555555555555555555555555555555555555555553fffffffeaaaaaaaaaaaaaaac0000000
-        // t1: c26022e6d5be3df6379ef384ac4c50fed3bba6f09242eaabce2164ae1ef680ab889a782e408ae5716c4ebcc2dfb20e3f
-        // t2: e936fcad1c357af9f555704c358792ea7ba9e9ccf5a1ae5a6c15f2e367766b98d5685951009ece0586eb85d110e566b8
 
         // 3. x1 = t1 + t2
         let mut x1 = t1;
@@ -102,15 +139,12 @@ impl HashToCurve {
         x1 = utils::elem_cmov(cops, x1, c2, e1); // 7. x1 = cmov(x1, c2, e1)
         x1 = cops.elem_product(&x1, &c1); // 8. x1 = x1 * c1
         let mut gx1 = cops.elem_squared(&x1); // 9. gx1 = x1^2
-        // x1 is correct here: 61bca803825ab22e152cf21e4b689202bd9a6a4da6aba980398a64b5a753deda495772213ccfbb8d4df1a86725272463
         cops.elem_add(&mut gx1, &self.a); // 10. gx1 = gx1 + a
         gx1 = cops.elem_product(&gx1, &x1); // 11. gx1 = gx1 * x1
         cops.elem_add(&mut gx1, &self.b); // 12. gx1 = gx1 + b
-        // gx1 is correct here: 3a06bffe25d0e7752fbdfff1ae5a51cd23e254e982498a8c79a39ef6862fc52f812491b03175bbcc50551208eeeb8028
         let x2 = cops.elem_product(&t1, &x1); // 13. x2 = t1 * x1
         t2 = cops.elem_product(&t1, &t2); // 14. t2 = t1 * t2
         let gx2 = cops.elem_product(&gx1, &t2); // 15. gx2 = gx1 * t2
-        // gx2 is correct here: a8726b84161bc566640bc14877731c02ce8c290f76bfcbb152a7243b4721ee1491f9ff50485092976b00738b7fe0e303
         let e2 = utils::is_square(&utils::elem_to_biguint(gx1),
                             &self.is_sq_exp, &self.p); // 16. e2 = is_square(gx1)
         let x = utils::elem_cmov(cops, x2, x1, e2); // 17. x = cmov(x2, x1, e2)
@@ -132,7 +166,11 @@ impl HashToCurve {
         point
     }
 
-    /// returns the appropriate z value
+    /// returns the appropriate z value by creating an element and using the
+    /// negative version. The reason that I do it like this is because I don't
+    /// want to get involved with BigInt.
+    ///
+    /// TODO: uses BigUint ops
     fn get_z_value(id: CurveID, ops: &CurveOps, p: &BigUint, minus_z: u32) -> Elem<R> {
         utils::minus_elem(ops.common, p, utils::biguint_to_elem_unenc(id, ops.common, &BigUint::from(minus_z)))
     }
@@ -142,7 +180,19 @@ impl HashToCurve {
 mod tests {
     use super::*;
     use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
-    use hex;
+
+    #[test]
+    fn h2b_test() {
+        let h2c = HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common.q));
+        let mut count = 0;
+        for vector in HASH_TO_BASE_VECTORS.iter() {
+            let input = vector[0].as_bytes();
+            let expected = BigUint::parse_bytes(vector[1].as_bytes(), 10).unwrap();
+            let u_vec = h2c.hash_to_base(input, 0);
+            assert_eq!(u_vec[0].to_bytes_be(), expected.to_bytes_be(), "h2b test for count: {:?}", count);
+            count = count+1;
+        }
+    }
 
     #[test]
     fn sswu_test() {
@@ -154,11 +204,19 @@ mod tests {
             let exp_y = BigUint::parse_bytes(vector[2].as_bytes(), 10).unwrap();
             let u_vec = vec!(input);
             let point = h2c.sswu(&u_vec).to_unencoded();
-            assert_eq!(hex::encode(point.x.to_bytes_be()), hex::encode(exp_x.to_bytes_be()), "x test for count: {:?}", count);
-            assert_eq!(hex::encode(point.y.to_bytes_be()), hex::encode(exp_y.to_bytes_be()), "y test for count: {:?}", count);
+            assert_eq!(point.x.to_bytes_be(), exp_x.to_bytes_be(), "x test for count: {:?}", count);
+            assert_eq!(point.y.to_bytes_be(), exp_y.to_bytes_be(), "y test for count: {:?}", count);
             count = count+1;
         }
     }
+
+    pub const HASH_TO_BASE_VECTORS: [[&str; 2]; 5] = [
+        ["", "15670280948239665018787050025088822552903093865230238970017602952833555416398748331082295637805213707088989441755988"],
+		["1", "1942715482632358166165565369095283869513634648389774012602448122359464835733690346035199729746417427046377204715303"],
+		["asdf", "24507112164256266255100924053603326775213507976390981967792131453083876194411216719447408537203841824718570787142464"],
+		["test", "6409376039185531560017287982748544597515854411296193693488280424481644496093326544690902528863962436268623496771541"],
+		["random", "16247250678686872222869936093984092594492729196895879130498408114251281419554923530849483086336127849429159109128818"],
+    ];
 
     pub const SSWU_TEST_VECTORS: [[&str; 3]; 5] = [
         [

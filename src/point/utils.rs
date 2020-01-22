@@ -18,20 +18,19 @@ use untrusted;
 use subtle::ConditionallySelectable;
 
 use num::{BigUint,Zero,One};
-use num_traits::cast::ToPrimitive;
 use core::marker::PhantomData;
 
 use super::{P256,P384};
 
 /// I2osp converts an integer to a big-endian octet-string of length `xLen` and
 /// copies it into `out` (see: https://tools.ietf.org/html/rfc8017#section-4.1)
-pub fn I2osp(x: BigUint, x_len: usize, out: &mut [u8]) {
+pub fn I2osp(x: u64, x_len: usize, out: &mut [u8]) {
     assert!(x >= Zero::zero());
-    assert!(x < BigUint::from((1<<(8*x_len)) as u64));
+    assert!(x < 1<<(8*x_len));
     assert!(out.len() >= x_len);
     let mut val = x;
 	for i in out.len()-x_len..out.len() {
-        out[i] = (&val & BigUint::one()).to_u8().unwrap();
+        out[i] = (&val & 1) as u8;
 		val = &val >> 8;
     }
 }
@@ -81,7 +80,11 @@ pub fn biguint_to_scalar(cops: &CommonOps, x: &BigUint) -> Scalar {
 ///
 /// TODO: come up with better error type!!
 pub fn biguint_to_elem_unenc(id: CurveID, cops: &CommonOps, x: &BigUint) -> Elem<R> {
-    let bytes = get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES);
+    let mut bytes = x.to_bytes_be();
+    let fill_len = cops.num_limbs*LIMB_BYTES;
+    if bytes.len() < fill_len {
+        bytes = get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES);
+    }
     let input = untrusted::Input::from(&bytes);
     input.read_all(Unspecified, |input| {
         Ok(
@@ -175,4 +178,47 @@ pub fn elem_cmov(cops: &CommonOps, a: Elem<R>, b: Elem<R>, c: bool) -> Elem<R> {
     let b_bu = elem_to_biguint(b);
     let res = (&c_bu * b_bu) + ((BigUint::one() - &c_bu) * a_bu);
     biguint_to_elem(cops, &res)
+}
+
+/// Moves the contents of `src` into the provided output buffer `dst`. Clears
+/// the contents of `dst` first.
+pub fn copy_into_cleared(src: &[u8], dst: &mut Vec<u8>) {
+    dst.clear();
+    dst.extend_from_slice(src)
+}
+
+pub mod hkdf {
+    //! The hkdf module provides access to the functionality provoided HKDF as
+    //! specified in [RFC5869](https://tools.ietf.org/html/rfc5869)
+    //!
+    //! A wrapper around the rust-crypto implementation of HKDF
+    //! [RFC5869](https://tools.ietf.org/html/rfc5869) locked to using SHA512 as the
+    //! underlying hash function. The abstraction is necessary so that we can
+    //! provide multiple sized output buffers, where the HKDF instance.
+    //!
+    //! TODO: Rewrite to use the ring implementation. There were some difficulties
+    //! around the way that ring does not give access to the raw bytes output by
+    //! these algorithms
+
+    use crypto::hkdf::{hkdf_extract,hkdf_expand};
+    use crypto::sha2::Sha512;
+    use super::copy_into_cleared;
+
+    const SHA512_OUTPUT_BYTES_LENGTH: usize = 64;
+
+    /// runs HKDF_Extract as specified in
+    /// [RFC5869](https://tools.ietf.org/html/rfc5869).
+    pub fn extract(seed: &[u8], secret: &[u8], out: &mut Vec<u8>) {
+        if out.len() != SHA512_OUTPUT_BYTES_LENGTH {
+            copy_into_cleared(&[0; SHA512_OUTPUT_BYTES_LENGTH], out);
+        }
+        hkdf_extract(Sha512::new(), &seed, &secret, out)
+    }
+
+    /// runs HKDF_Expand as specified in
+    /// [RFC5869](https://tools.ietf.org/html/rfc5869). The value of `prk`
+    /// should be uniformly sampled bytes
+    pub fn expand(prk: &[u8], info: &[u8], out: &mut Vec<u8>) {
+        hkdf_expand(Sha512::new(), &prk, &info, out)
+    }
 }
