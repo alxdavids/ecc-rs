@@ -267,6 +267,9 @@ mod tests {
     }
 
 
+    // test vectors taken from
+    // https://github.com/alxdavids/voprf-poc/blob/master/go/oprf/groups/ecgroup/h2c_test.go
+    // (extra values derived for P-256).
     pub const HASH_TO_BASE_VECTORS: [[[&str; 2]; 5]; 2] = [
         [
             ["", "83535524130228921029437730219861701397353033315370087929938533023961338081610"],
