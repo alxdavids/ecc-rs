@@ -12,13 +12,11 @@
 // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use crate::ring_ecc::{ec, error, rand};
+use crate::ring_ecc::ec;
 
 /// A key agreement algorithm.
 macro_rules! suite_b_curve {
-    ( $NAME:ident, $bits:expr, $private_key_ops:expr, $id:expr,
-      $check_private_key_bytes:ident, $generate_private_key:ident,
-      $public_from_private:ident) => {
+    ( $NAME:ident, $bits:expr, $private_key_ops:expr, $id:expr) => {
         /// Public keys are encoding in uncompressed form using the
         /// Octet-String-to-Elliptic-Curve-Point algorithm in
         /// [SEC 1: Elliptic Curve Cryptography, Version 2.0]. Public keys are
@@ -35,30 +33,8 @@ macro_rules! suite_b_curve {
         pub static $NAME: ec::Curve = ec::Curve {
             public_key_len: 1 + (2 * (($bits + 7) / 8)),
             elem_scalar_seed_len: ($bits + 7) / 8,
-            id: $id,
-            check_private_key_bytes: $check_private_key_bytes,
-            generate_private_key: $generate_private_key,
-            public_from_private: $public_from_private,
+            id: $id
         };
-
-        fn $check_private_key_bytes(bytes: &[u8]) -> Result<(), error::Unspecified> {
-            debug_assert_eq!(bytes.len(), $bits / 8);
-            ec::suite_b::private_key::check_scalar_big_endian_bytes($private_key_ops, bytes)
-        }
-
-        fn $generate_private_key(
-            rng: &dyn rand::SecureRandom,
-            out: &mut [u8],
-        ) -> Result<(), error::Unspecified> {
-            ec::suite_b::private_key::generate_private_scalar_bytes($private_key_ops, rng, out)
-        }
-
-        fn $public_from_private(
-            public_out: &mut [u8],
-            private_key: &ec::Seed,
-        ) -> Result<(), error::Unspecified> {
-            ec::suite_b::private_key::public_from_private($private_key_ops, public_out, private_key)
-        }
     };
 }
 
@@ -66,18 +42,12 @@ suite_b_curve!(
     P256,
     256,
     &ec::suite_b::ops::p256::PRIVATE_KEY_OPS,
-    ec::CurveID::P256,
-    p256_check_private_key_bytes,
-    p256_generate_private_key,
-    p256_public_from_private
+    ec::CurveID::P256
 );
 
 suite_b_curve!(
     P384,
     384,
     &ec::suite_b::ops::p384::PRIVATE_KEY_OPS,
-    ec::CurveID::P384,
-    p384_check_private_key_bytes,
-    p384_generate_private_key,
-    p384_public_from_private
+    ec::CurveID::P384
 );

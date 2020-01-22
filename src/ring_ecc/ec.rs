@@ -12,24 +12,13 @@
 // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use crate::ring_ecc::{error, rand};
-
-pub use self::keys::{KeyPair, PublicKey, Seed};
+pub use self::keys::PublicKey;
 
 pub struct Curve {
     pub public_key_len: usize,
     pub elem_scalar_seed_len: usize,
 
-    pub id: CurveID,
-
-    // Precondition: `bytes` is the correct length.
-    check_private_key_bytes: fn(bytes: &[u8]) -> Result<(), error::Unspecified>,
-
-    generate_private_key:
-        fn(rng: &dyn rand::SecureRandom, &mut [u8]) -> Result<(), error::Unspecified>,
-
-    public_from_private:
-        fn(public_out: &mut [u8], private_key: &Seed) -> Result<(), error::Unspecified>,
+    pub id: CurveID
 }
 
 derive_debug_via_id!(Curve);
