@@ -300,7 +300,7 @@ impl AffinePoint<Encoded> {
                                             );
                 // perform square root
                 // (TODO: don't do BigUint ops as they are not constant time)
-                let q = utils::get_modulus_as_biguint(&self.ops.common.q);
+                let q = utils::get_modulus_as_biguint(&self.ops.common);
                 let sqrt_exp = (&q+BigUint::from(1_u64))/BigUint::from(4_u64);
                 let y_sqrt = utils::sqrt(&utils::elem_to_biguint(yy_unenc), &sqrt_exp, &q);
                 let y_sqrt_bytes = y_sqrt.to_bytes_be();
@@ -331,6 +331,14 @@ impl AffinePoint<Encoded> {
         }).to_encoded()
     }
 
+    /// Hashes the input bytes `alpha` deterministically to a random point on
+    /// the curve. Ensures that the output curve point does not reveal the
+    /// discrete log with respect to the fixed group generator.
+    pub fn hash_to_curve(&self, alpha: &[u8]) -> Self {
+        let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common));
+        h2c.full(alpha)
+    }
+
     /// Returns the `AffinePoint` object in unencoded format, removing the
     /// montgomery encoding
     fn to_unencoded(&self) -> AffinePoint<Unencoded> {
@@ -351,7 +359,7 @@ impl AffinePoint<Encoded> {
     fn get_minus_y_point(&self) -> Self {
         Self {
             x: self.x.clone(),
-            y: utils::get_modulus_as_biguint(&self.ops.common.q) - &self.y,
+            y: utils::get_modulus_as_biguint(&self.ops.common) - &self.y,
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,

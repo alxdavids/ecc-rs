@@ -4,7 +4,7 @@ use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar,Modulus};
+use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
@@ -61,9 +61,9 @@ pub fn sgn0_le_elem(cops: &CommonOps, x: Elem<R>) -> i8 {
 
 /// Returns the curve modulus (montgomery encoded) for performing modular
 /// operations
-pub fn get_modulus_as_biguint(q: &Modulus) -> BigUint {
+pub fn get_modulus_as_biguint(cops: &CommonOps) -> BigUint {
     let p: Elem<R> = Elem {
-        limbs: q.p,
+        limbs: cops.q.p,
         m: PhantomData,
         encoding: PhantomData
     };

@@ -208,8 +208,8 @@ mod tests {
     fn h2b_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common.q)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common.q)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -227,8 +227,8 @@ mod tests {
     fn sswu_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common.q)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common.q)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -249,8 +249,8 @@ mod tests {
     fn full_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common.q)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common.q)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
