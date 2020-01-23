@@ -220,12 +220,12 @@ impl AffinePoint<Encoded> {
     /// inverse of the provided scalar input `k`.
     pub fn inv_scalar_mul(&self, scalar: &[u8]) -> JacobianPoint<Encoded> {
         let sc_bu = BigUint::from_bytes_be(scalar);
-        let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
         let sc_ops = match self.id {
             P256 => &P256_SCALAR_INV_OPS,
             P384 => &P384_SCALAR_INV_OPS,
             _ => panic!("bad id"),
         };
+        let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
         let inv_sc_mont = sc_ops.scalar_inv_to_mont(&ring_sc);
         let inv_sc = utils::scalar_unencoded(self.ops.common, sc_ops, &inv_sc_mont);
         self.ring_point_mul(inv_sc)
@@ -377,6 +377,14 @@ impl AffinePoint<Encoded> {
             panic!("error filling")
         }
         out
+    }
+
+    /// Reduces a scalar modulo n (the order of the base field)
+    pub fn reduce_scalar(&self, sc: &[u8]) -> Vec<u8> {
+        let n_bu = utils::elem_to_biguint(self.ops.common.n);
+        let sc_bu = BigUint::from_bytes_be(sc);
+        let reduced = sc_bu % n_bu;
+        reduced.to_bytes_be()
     }
 
     /// performs point multiplication with a ring Scalar object
@@ -695,6 +703,21 @@ mod tests {
             let p = AffinePoint::new(id);
             let out = p.uniform_bytes_from_field();
             assert_eq!(out.len(), p.ops.common.num_limbs*LIMB_BYTES, "curve: {:?}", id);
+        }
+    }
+
+    #[test]
+    fn reduce_scalar() {
+        for &id in [P256,P384].iter() {
+            let n = match id {
+                P256 => P256_OPS.common.n,
+                P384 => P384_OPS.common.n,
+                _ => panic!("test failed")
+            };
+            let n_bu = utils::elem_to_biguint(n);
+            let trial = n_bu * BigUint::from(2_u64) + BigUint::from(7_u64);
+            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be());
+            assert_eq!(BigUint::from_bytes_be(&reduced), BigUint::from(7_u64), "scalar reduction for {:?}", id);
         }
     }
 
