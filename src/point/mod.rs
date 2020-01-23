@@ -120,8 +120,9 @@ pub const P384: CurveID = CurveID::P384;
 /// used for perfoming all group operations since this is how *ring* internals
 /// do it.
 pub enum Encoded {}
-/// Indiciates that the point is unencoded, aka transmission format.
-pub enum Unencoded {}
+/// Indiciates that the point is unencoded, aka transmission format. Remains
+/// private as we do not ever want to expose points in this form.
+enum Unencoded {}
 
 /// The `AffinePoint` struct provides access to a base elliptic curve point
 /// representation. The setting of `id` and `ops` determine which curve the
