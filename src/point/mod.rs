@@ -11,10 +11,10 @@
 //! use num::BigUint;
 //!
 //! // get new zero point
-//! let _ = AffinePoint::new(P256);
+//! let _ = AffinePoint::new(P256).unwrap();
 //!
 //! // get generator point
-//! let g = AffinePoint::get_generator(P256);
+//! let g = AffinePoint::get_generator(P256).unwrap();
 //!
 //! // perform scalar mult
 //! let k = BigUint::parse_bytes(b"0a", 16).unwrap();
@@ -42,7 +42,7 @@
 //!
 //! ```
 //! use ecc_rs::point::*;
-//! let gen = AffinePoint::get_generator(P256);
+//! let gen = AffinePoint::get_generator(P256).unwrap();
 //! let jac = gen.to_jacobian();
 //! let gen_conv = jac.to_affine();
 //! assert_eq!(gen.is_valid(), true);
@@ -56,15 +56,17 @@
 //!
 //! ```
 //! use ecc_rs::point::*;
-//! let gen = AffinePoint::get_generator(P256);
+//! let gen = AffinePoint::get_generator(P256).unwrap();
 //!
 //! // uncompressed
 //! let ser_decmp = gen.serialize(false);
-//! let deser_decmp = (AffinePoint::new(P256)).deserialize(&ser_decmp);
+//! let deser_decmp = (AffinePoint::new(P256).unwrap())
+//!                                     .deserialize(&ser_decmp).unwrap();
 //!
 //! // compressed
 //! let ser_cmp = gen.serialize(true);
-//! let deser_cmp = (AffinePoint::new(P256)).deserialize(&ser_cmp);
+//! let deser_cmp = (AffinePoint::new(P256).unwrap())
+//!                                     .deserialize(&ser_cmp).unwrap();
 //! ```
 //!
 //! Get deterministic (randomly distributed) curve points using arbitrary input
@@ -73,7 +75,7 @@
 //!
 //! ```
 //! use ecc_rs::point::*;
-//! let p = AffinePoint::new(P256);
+//! let p = AffinePoint::new(P256).unwrap();
 //! let r = p.hash_to_curve("some_input".as_bytes());
 //! assert!(r.is_valid());
 //! ```
@@ -81,6 +83,7 @@
 use num::{BigUint,BigInt,Zero};
 use num_bigint::ToBigInt;
 use core::marker::PhantomData;
+use std::io::Error;
 
 use subtle::ConditionallySelectable;
 
@@ -106,6 +109,7 @@ use rand::sealed::SecureRandom;
 
 mod h2c;
 mod utils;
+mod errors;
 
 /// P256 constant for exposing *ring* CurveID::P256 enum
 pub const P256: CurveID = CurveID::P256;
@@ -151,61 +155,67 @@ pub struct AffinePoint<T> {
 impl AffinePoint<Encoded> {
     /// Returns a zero point, this isn't really a valid point representation but
     /// can be useful when constructing points via point addition
-    pub fn new(id: CurveID) -> Self {
+    pub fn new(id: CurveID) -> Result<Self, Error> {
         match id {
-            P256 => Self {
-                x: Zero::zero(),
-                y: Zero::zero(),
-                id: P256,
-                ops: &P256_OPS,
-                encoding: PhantomData,
-            },
-            P384 => Self {
-                x: Zero::zero(),
-                y: Zero::zero(),
-                id: P384,
-                ops: &P384_OPS,
-                encoding: PhantomData,
-            },
-            _ => panic!("unsupported"),
+            P256 => Ok(
+                Self {
+                    x: Zero::zero(),
+                    y: Zero::zero(),
+                    id: P256,
+                    ops: &P256_OPS,
+                    encoding: PhantomData,
+                }
+            ),
+            P384 => Ok(
+                Self {
+                    x: Zero::zero(),
+                    y: Zero::zero(),
+                    id: P384,
+                    ops: &P384_OPS,
+                    encoding: PhantomData,
+                }
+            ),
+            _ => Err(errors::unsupported()),
         }
     }
 
     /// Returns the fixed generator of the group instantiated by the curve (in
     /// montgomery encoding)
-    pub fn get_generator(id: CurveID) -> Self {
+    pub fn get_generator(id: CurveID) -> Result<Self, Error> {
         match id {
-            P256 => Self {
-                // *ring* doesn't explicitly make the P256 generator available,
-                // but some applications need it. we use the montgomery encoded
-                // values provided in (except with -y coordinate)
-                // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt
-                x: BigUint::parse_bytes(b"18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c", 16).unwrap(),
-                y: BigUint::parse_bytes(b"8571ff1825885d85d2e88688dd21f3258b4ab8e4ba19e45cddf25357ce95560a", 16).unwrap(),
-                id: P256,
-                ops: &P256_OPS,
-                encoding: PhantomData,
-            },
-            P384 => {
-                // for some reason the *ring* generator does not agree with
-                // https://www.secg.org/SEC2-Ver-1.0.pdf Section 2.8.1. using
-                // the *ring* point for now
+            P256 => Ok(
                 Self {
+                    // *ring* doesn't explicitly make the P256 generator available,
+                    // but some applications need it. we use the montgomery encoded
+                    // values provided in (except with -y coordinate)
+                    // ring_ecc/ec/suite_b/ops/p256_point_mul_tests.txt
+                    x: BigUint::parse_bytes(b"18905f76a53755c679fb732b7762251075ba95fc5fedb60179e730d418a9143c", 16).unwrap(),
+                    y: BigUint::parse_bytes(b"8571ff1825885d85d2e88688dd21f3258b4ab8e4ba19e45cddf25357ce95560a", 16).unwrap(),
+                    id: P256,
+                    ops: &P256_OPS,
+                    encoding: PhantomData,
+                }
+            ),
+            P384 => Ok(
+                Self {
+                    // for some reason the *ring* generator does not agree with
+                    // https://www.secg.org/SEC2-Ver-1.0.pdf Section 2.8.1. using
+                    // the *ring* point for now
                     x: utils::elem_to_biguint(P384_GENERATOR.0),
                     y: utils::elem_to_biguint(P384_GENERATOR.1),
                     id: P384,
                     ops: &P384_OPS,
                     encoding: PhantomData,
                 }
-            },
-            _ => panic!("unsupported"),
+            ),
+            _ => Err(errors::unsupported()),
         }
     }
 
     /// Performs `k*G`, where `G` is the fixed generator of the group, and `k`
     /// is the input scalar
     pub fn base_mul(id: CurveID, scalar: &[u8]) -> JacobianPoint<Encoded> {
-        AffinePoint::get_generator(id).scalar_mul(scalar)
+        AffinePoint::get_generator(id).unwrap().scalar_mul(scalar)
     }
 
     /// Performs `k*P` where `P` is some point on the curve and `k` is the input
@@ -221,10 +231,10 @@ impl AffinePoint<Encoded> {
     pub fn inv_scalar_mul(&self, scalar: &[u8]) -> JacobianPoint<Encoded> {
         let sc_bu = BigUint::from_bytes_be(scalar);
         let sc_ops = match self.id {
-            P256 => &P256_SCALAR_INV_OPS,
-            P384 => &P384_SCALAR_INV_OPS,
-            _ => panic!("bad id"),
-        };
+            P256 => Ok(&P256_SCALAR_INV_OPS),
+            P384 => Ok(&P384_SCALAR_INV_OPS),
+            _ => Err(errors::unsupported()),
+        }.unwrap();
         let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
         let inv_sc_mont = sc_ops.scalar_inv_to_mont(&ring_sc);
         let inv_sc = utils::scalar_unencoded(self.ops.common, sc_ops, &inv_sc_mont);
@@ -274,10 +284,16 @@ impl AffinePoint<Encoded> {
             let sign = utils::sgn0_le(&y_bytes);
             // add tag for compression
             match sign {
-                1 => out.push(0x02),
-                -1 => out.push(0x03),
-                _ => panic!("not intended!")
-            };
+                1 => {
+                    out.push(0x02);
+                    Ok(())
+                },
+                -1 => {
+                    out.push(0x03);
+                    Ok(())
+                }
+                _ => Err(errors::internal())
+            }.unwrap(); // successful unwrap indicates that no error occurred
             out.extend_from_slice(&x_bytes);
         }
         out
@@ -296,7 +312,7 @@ impl AffinePoint<Encoded> {
     /// Point deserialization for compressed points currently uses
     /// BigUint arithmetic and so it cannot be considered constant-time (even
     /// though it is implemented using straight-line arithmetic).
-    pub fn deserialize(&mut self, input: &[u8]) -> AffinePoint<Encoded> {
+    pub fn deserialize(&mut self, input: &[u8]) -> Result<AffinePoint<Encoded>, Error> {
         let coord_byte_length = self.ops.common.num_limbs*LIMB_BYTES;
         let cops = self.ops.common;
         let x = BigUint::from_bytes_be(&input[1..coord_byte_length+1]);
@@ -304,10 +320,10 @@ impl AffinePoint<Encoded> {
         // An array of bytes is in uncompressed format if the first byte of
         // `input` is `0x04`, and in compressed format if it is `0x02` or
         // `0x03`.
-        let y = match parity {
+        let res = match parity {
             0x04 => {
                 assert_eq!(input.len(), 2*coord_byte_length+1);
-                BigUint::from_bytes_be(&input[1+coord_byte_length..])
+                Ok(BigUint::from_bytes_be(&input[1+coord_byte_length..]))
             },
             0x02 | 0x03 => {
                 assert_eq!(input.len(), coord_byte_length+1);
@@ -344,19 +360,24 @@ impl AffinePoint<Encoded> {
                 let mod_mask = u8::conditional_select(&1, &0, parity_cmp.into());
                 let y_par = BigInt::from(out_sign) * y_sqrt.to_bigint().unwrap();
                 let modulus = (BigUint::from(mod_mask) * &q).to_bigint().unwrap();
-                (modulus - y_par).to_biguint().unwrap()
+                Ok((modulus - y_par).to_biguint().unwrap())
             },
-            _ => panic!("invalid point serialization")
+            _ => Err(errors::deserialization())
         };
 
-        // returns an encoded point
-        (AffinePoint {
-            x: x,
-            y: y,
-            id: self.id,
-            ops: self.ops,
-            encoding: PhantomData
-        }).to_encoded()
+        // create output point
+        match res {
+            Ok(y) => Ok(
+                (AffinePoint {
+                    x: x,
+                    y: y,
+                    id: self.id,
+                    ops: self.ops,
+                    encoding: PhantomData
+                }).to_encoded()
+            ),
+            Err(e) => Err(e)
+        }
     }
 
     /// Hashes the input bytes `alpha` deterministically to a random point on
@@ -439,12 +460,9 @@ impl AffinePoint<Unencoded> {
 /// The `JacobianPoint` struct represents an elliptic curve point in jacobian
 /// coordinates (in either montgomery encoding or not).
 pub struct JacobianPoint<T> {
-    /// blah
-    pub x: BigUint,
-    /// blah
-    pub y: BigUint,
-    /// blah
-    pub z: BigUint,
+    x: BigUint,
+    y: BigUint,
+    z: BigUint,
     id: CurveID,
     ops: &'static CurveOps,
     encoding: PhantomData<T>
@@ -453,7 +471,7 @@ pub struct JacobianPoint<T> {
 impl JacobianPoint<Encoded> {
     /// Returns the identity point
     pub fn new(id: CurveID) -> Self {
-        AffinePoint::new(id).to_jacobian()
+        AffinePoint::new(id).unwrap().to_jacobian()
     }
 
     /// Performs ellptic curve point addition on the point `self` and `other`
@@ -538,8 +556,8 @@ mod tests {
     fn scalar_mul_test() {
         for i in 0..2 {
             let gen = match i {
-                0 => AffinePoint::get_generator(P256),
-                1 => AffinePoint::get_generator(P384),
+                0 => AffinePoint::get_generator(P256).unwrap(),
+                1 => AffinePoint::get_generator(P384).unwrap(),
                 _ => panic!("test failed")
             };
 
@@ -574,8 +592,8 @@ mod tests {
     fn inverse_sc_mul_test() {
         for i in 0..2 {
             let gen = match i {
-                0 => AffinePoint::get_generator(P256),
-                1 => AffinePoint::get_generator(P384),
+                0 => AffinePoint::get_generator(P256).unwrap(),
+                1 => AffinePoint::get_generator(P384).unwrap(),
                 _ => panic!("test failed")
             };
 
@@ -631,7 +649,7 @@ mod tests {
         let k = "0a".as_bytes();
         for &id in [P256, P384].iter() {
             let k_base = AffinePoint::base_mul(id, &k);
-            let k_g = AffinePoint::get_generator(id).scalar_mul(&k);
+            let k_g = AffinePoint::get_generator(id).unwrap().scalar_mul(&k);
             assert_eq!(k_g.is_valid(), true, "for id: {:?}", id);
             assert_eq!(k_base.is_valid(), true, "for id: {:?}", id);
             assert_eq!(k_g.equals(&k_base), true, "for id: {:?}", id);
@@ -641,7 +659,7 @@ mod tests {
     #[test]
     fn point_conversion() {
         for &id in [P256,P384].iter() {
-            let gen = AffinePoint::get_generator(id);
+            let gen = AffinePoint::get_generator(id).unwrap();
             let jac = gen.to_jacobian();
             let gen_conv = jac.to_affine();
             assert_eq!(gen.is_valid(), true, "for id: {:?}", id);
@@ -653,7 +671,7 @@ mod tests {
     #[test]
     fn point_encoding() {
         for &id in [P256,P384].iter() {
-            let gen = AffinePoint::get_generator(id);
+            let gen = AffinePoint::get_generator(id).unwrap();
             let enc = gen.to_unencoded();
             // check unencoded point representation
             match id {
@@ -676,9 +694,9 @@ mod tests {
     #[test]
     fn point_serialization() {
         for &id in [P256,P384].iter() {
-            let gen = AffinePoint::get_generator(id);
+            let gen = AffinePoint::get_generator(id).unwrap();
             let ser_de = gen.serialize(false);
-            let deser_de = (AffinePoint::new(id)).deserialize(&ser_de);
+            let deser_de = AffinePoint::new(id).unwrap().deserialize(&ser_de).unwrap();
             assert_eq!(deser_de.is_valid(), true, "decompressed point validity check for {:?}", id);
             assert_eq!(deser_de.equals(&gen), true, "decompressed point equality check for {:?}", id);
         }
@@ -687,9 +705,9 @@ mod tests {
     #[test]
     fn point_serialization_compressed() {
         for &id in [P256,P384].iter() {
-            let gen = AffinePoint::get_generator(id);
+            let gen = AffinePoint::get_generator(id).unwrap();
             let ser_cmp = gen.serialize(true);
-            let deser_cmp = (AffinePoint::new(id)).deserialize(&ser_cmp);
+            let deser_cmp = AffinePoint::new(id).unwrap().deserialize(&ser_cmp).unwrap();
             assert_eq!(deser_cmp.is_valid(), true, "compressed point validity check for {:?}", id);
             assert_eq!(deser_cmp.equals(&gen), true, "compressed point equality check for {:?}", id);
         }
@@ -698,7 +716,7 @@ mod tests {
     #[test]
     fn hash_to_curve() {
         for &id in [P256,P384].iter() {
-            let p = AffinePoint::new(id);
+            let p = AffinePoint::new(id).unwrap();
             let r = p.hash_to_curve("some_input".as_bytes());
             assert!(r.is_valid(), "curve: {:?}", id);
         }
@@ -707,7 +725,7 @@ mod tests {
     #[test]
     fn uniform_bytes() {
         for &id in [P256,P384].iter() {
-            let p = AffinePoint::new(id);
+            let p = AffinePoint::new(id).unwrap();
             let out = p.uniform_bytes_from_field();
             assert_eq!(out.len(), p.ops.common.num_limbs*LIMB_BYTES, "curve: {:?}", id);
         }
@@ -723,7 +741,7 @@ mod tests {
             };
             let n_bu = utils::elem_to_biguint(n);
             let trial = n_bu * BigUint::from(2_u64) + BigUint::from(7_u64);
-            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be(), true);
+            let reduced = AffinePoint::new(id).unwrap().reduce_scalar(&trial.to_bytes_be(), true);
             assert_eq!(BigUint::from_bytes_be(&reduced), BigUint::from(7_u64), "scalar reduction for {:?}", id);
         }
     }
@@ -738,7 +756,7 @@ mod tests {
             };
             let n_bu = utils::elem_to_biguint(n);
             let trial = BigUint::from(7_u64);
-            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be(), false);
+            let reduced = AffinePoint::new(id).unwrap().reduce_scalar(&trial.to_bytes_be(), false);
             assert_eq!(BigUint::from_bytes_be(&reduced), n_bu-BigUint::from(7_u64), "negative scalar reduction for {:?}", id);
         }
     }

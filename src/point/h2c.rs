@@ -181,7 +181,7 @@ impl HashToCurve {
         y = utils::elem_cmov(cops, utils::minus_elem(cops, &self.p, y), y, e3); // 21. y = cmov(-y, y, e3x)
 
         // construct point output object
-        let mut point = AffinePoint::new(self.id);
+        let mut point = AffinePoint::new(self.id).unwrap();
         point.x = utils::elem_to_biguint(x);
         point.y = utils::elem_to_biguint(y);
         assert!(point.is_valid());
