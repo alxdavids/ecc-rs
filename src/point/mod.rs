@@ -380,10 +380,14 @@ impl AffinePoint<Encoded> {
     }
 
     /// Reduces a scalar modulo n (the order of the base field)
-    pub fn reduce_scalar(&self, sc: &[u8]) -> Vec<u8> {
+    pub fn reduce_scalar(&self, sc: &[u8], pve: bool) -> Vec<u8> {
         let n_bu = utils::elem_to_biguint(self.ops.common.n);
         let sc_bu = BigUint::from_bytes_be(sc);
-        let reduced = sc_bu % n_bu;
+        let mut reduced = sc_bu % &n_bu;
+        if !pve {
+            // we don't do negative scalars
+            reduced = &n_bu-reduced;
+        }
         reduced.to_bytes_be()
     }
 
@@ -435,9 +439,12 @@ impl AffinePoint<Unencoded> {
 /// The `JacobianPoint` struct represents an elliptic curve point in jacobian
 /// coordinates (in either montgomery encoding or not).
 pub struct JacobianPoint<T> {
-    x: BigUint,
-    y: BigUint,
-    z: BigUint,
+    /// blah
+    pub x: BigUint,
+    /// blah
+    pub y: BigUint,
+    /// blah
+    pub z: BigUint,
     id: CurveID,
     ops: &'static CurveOps,
     encoding: PhantomData<T>
@@ -716,8 +723,23 @@ mod tests {
             };
             let n_bu = utils::elem_to_biguint(n);
             let trial = n_bu * BigUint::from(2_u64) + BigUint::from(7_u64);
-            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be());
+            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be(), true);
             assert_eq!(BigUint::from_bytes_be(&reduced), BigUint::from(7_u64), "scalar reduction for {:?}", id);
+        }
+    }
+
+    #[test]
+    fn reduce_scalar_neg() {
+        for &id in [P256,P384].iter() {
+            let n = match id {
+                P256 => P256_OPS.common.n,
+                P384 => P384_OPS.common.n,
+                _ => panic!("test failed")
+            };
+            let n_bu = utils::elem_to_biguint(n);
+            let trial = BigUint::from(7_u64);
+            let reduced = AffinePoint::new(id).reduce_scalar(&trial.to_bytes_be(), false);
+            assert_eq!(BigUint::from_bytes_be(&reduced), n_bu-BigUint::from(7_u64), "negative scalar reduction for {:?}", id);
         }
     }
 
