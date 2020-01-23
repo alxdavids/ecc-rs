@@ -327,7 +327,7 @@ impl AffinePoint<Encoded> {
             },
             0x02 | 0x03 => {
                 assert_eq!(input.len(), coord_byte_length+1);
-                let x_enc = utils::biguint_to_elem_unenc(self.id, cops, &x);
+                let x_enc = utils::biguint_to_elem_unenc(self.id, cops, &x).unwrap();
                 let xx_enc = self.ops.common.elem_squared(&x_enc);
                 let scalar_ops = match self.id {
                     P256 => &P256_SCALAR_OPS,
@@ -384,20 +384,20 @@ impl AffinePoint<Encoded> {
     /// the curve. Ensures that the output curve point does not reveal the
     /// discrete log with respect to the fixed group generator.
     pub fn hash_to_curve(&self, alpha: &[u8]) -> Self {
-        let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common));
+        let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common)).unwrap();
         h2c.full(alpha)
     }
 
     /// Returns a uniform number of bytes equal to the length of elements in the
     /// base field
-    pub fn uniform_bytes_from_field(&self) -> Vec<u8> {
+    pub fn uniform_bytes_from_field(&self) -> Result<Vec<u8>, Error> {
         let fill_len = self.ops.common.num_limbs*LIMB_BYTES;
         let mut out = vec![0; fill_len];
         let rng = rand::SystemRandom::new();
         if let Err(_) = rng.fill_impl(&mut out) {
-            panic!("error filling")
+            return Err(errors::internal());
         }
-        out
+        Ok(out)
     }
 
     /// Reduces a scalar modulo n (the order of the base field)
@@ -448,8 +448,12 @@ impl AffinePoint<Unencoded> {
     /// performing group operations.
     fn to_encoded(&self) -> AffinePoint<Encoded> {
         AffinePoint {
-            x: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.x)),
-            y: utils::elem_to_biguint(utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.y)),
+            x: utils::elem_to_biguint(
+                utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.x).unwrap()
+            ),
+            y: utils::elem_to_biguint(
+                utils::biguint_to_elem_unenc(self.id, self.ops.common, &self.y).unwrap()
+            ),
             id: self.id,
             ops: self.ops,
             encoding: PhantomData,
@@ -726,7 +730,7 @@ mod tests {
     fn uniform_bytes() {
         for &id in [P256,P384].iter() {
             let p = AffinePoint::new(id).unwrap();
-            let out = p.uniform_bytes_from_field();
+            let out = p.uniform_bytes_from_field().unwrap();
             assert_eq!(out.len(), p.ops.common.num_limbs*LIMB_BYTES, "curve: {:?}", id);
         }
     }

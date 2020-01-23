@@ -3,7 +3,7 @@
 use std::io::{Error, ErrorKind};
 
 /// Unsupported curve type specified
-pub fn unsupported() -> Error { Error::new(ErrorKind::Other, "Curve choice is not supported") }
+pub fn unsupported() -> Error { Error::new(ErrorKind::Other, "Unsupported curve specification") }
 
 /// Error deserializing bytes into a valid group element object
 pub fn deserialization() -> Error { Error::new(ErrorKind::Other, "Failed to deserialize") }

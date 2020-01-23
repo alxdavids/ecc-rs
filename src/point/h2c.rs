@@ -6,9 +6,11 @@ use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::arithmetic::montgomery::R;
 
 use num::{BigUint,One,Zero};
+use std::io::Error;
 
 use super::{AffinePoint,P256,P384,Encoded};
 use super::utils;
+use super::errors;
 use hkdf_sha512 as hkdf;
 
 pub const SSWU_RO: &'static str = "SSWU-RO";
@@ -31,49 +33,53 @@ pub struct HashToCurve {
 
 impl HashToCurve {
     /// creates a new HashToCurve object
-    pub fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint) -> Self {
+    pub fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint) -> Result<Self, Error> {
         let sqrt_exp = (&modulus+BigUint::from(1_u64))/BigUint::from(4_u64); // (p+1)/4
         let is_sq_exp = (&modulus-BigUint::from(1_u64))/BigUint::from(2_u64); // (p-1)/2
         match id {
-            P256 => Self {
-                mapping_name: SSWU_RO,
-                dst: format!("VOPRF-P256-SHA512-{}-", SSWU_RO),
-                z: Self::get_z_value(id, ops, &modulus, 10),
-                m: 1,
-                l: 48,
-                a: ops.common.a,
-                b: ops.common.b,
-                p: modulus,
-                h_eff: BigUint::one(),
-                id: id,
-                sqrt_exp: sqrt_exp,
-                is_sq_exp: is_sq_exp,
-                ops: ops,
-            },
-            P384 => Self {
-                mapping_name: SSWU_RO,
-                dst: format!("VOPRF-P384-SHA512-{}-", SSWU_RO),
-                z: Self::get_z_value(id, ops, &modulus, 12),
-                m: 1,
-                l: 72,
-                a: ops.common.a,
-                b: ops.common.b,
-                p: modulus,
-                h_eff: BigUint::one(),
-                id: id,
-                sqrt_exp: sqrt_exp,
-                is_sq_exp: is_sq_exp,
-                ops: ops,
-            },
-            _ => panic!("unsupported curve")
+            P256 => Ok(
+                Self {
+                    mapping_name: SSWU_RO,
+                    dst: format!("VOPRF-P256-SHA512-{}-", SSWU_RO),
+                    z: Self::get_z_value(id, ops, &modulus, 10),
+                    m: 1,
+                    l: 48,
+                    a: ops.common.a,
+                    b: ops.common.b,
+                    p: modulus,
+                    h_eff: BigUint::one(),
+                    id: id,
+                    sqrt_exp: sqrt_exp,
+                    is_sq_exp: is_sq_exp,
+                    ops: ops,
+                }
+            ),
+            P384 => Ok(
+                Self {
+                    mapping_name: SSWU_RO,
+                    dst: format!("VOPRF-P384-SHA512-{}-", SSWU_RO),
+                    z: Self::get_z_value(id, ops, &modulus, 12),
+                    m: 1,
+                    l: 72,
+                    a: ops.common.a,
+                    b: ops.common.b,
+                    p: modulus,
+                    h_eff: BigUint::one(),
+                    id: id,
+                    sqrt_exp: sqrt_exp,
+                    is_sq_exp: is_sq_exp,
+                    ops: ops,
+                }
+            ),
+            _ => Err(errors::unsupported())
         }
     }
 
     pub fn full(&self, alpha: &[u8]) -> AffinePoint<Encoded> {
         let map_to_curve = match self.mapping_name {
-            "SSWU-RO" => |msg| self.sswu(msg),
-            _ => panic!("bad hash to curve mapping specified")
-        };
+            "SSWU-RO" => Ok(|msg| self.sswu(msg)),
+            _ => Err(errors::unsupported())
+        }.unwrap();
 
         // See https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05#section-6.6.1
         let u0 = self.hash_to_base(alpha, 0);
@@ -134,7 +140,7 @@ impl HashToCurve {
         let cops = self.ops.common;
         // if length is greater than 1 then something bad is happening
         assert!(u_vec.len() == 1);
-        let u = utils::biguint_to_elem_unenc(self.id, cops, &u_vec[0]);
+        let u = utils::biguint_to_elem_unenc(self.id, cops, &u_vec[0]).unwrap();
 
         // c1 = -b/a
         let a_inv = utils::invert_elem(&ops, self.a);
@@ -194,7 +200,8 @@ impl HashToCurve {
     ///
     /// TODO: uses BigUint ops
     fn get_z_value(id: CurveID, ops: &CurveOps, p: &BigUint, minus_z: u32) -> Elem<R> {
-        utils::minus_elem(ops.common, p, utils::biguint_to_elem_unenc(id, ops.common, &BigUint::from(minus_z)))
+        utils::minus_elem(ops.common, p,
+                utils::biguint_to_elem_unenc(id, ops.common, &BigUint::from(minus_z)).unwrap())
     }
 }
 
@@ -208,8 +215,8 @@ mod tests {
     fn h2b_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -227,8 +234,8 @@ mod tests {
     fn sswu_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -249,8 +256,8 @@ mod tests {
     fn full_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;

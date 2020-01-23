@@ -18,9 +18,11 @@ use untrusted;
 use subtle::ConditionallySelectable;
 
 use num::{BigUint,Zero,One};
+use std::io::Error;
 use core::marker::PhantomData;
 
 use super::{P256,P384};
+use super::errors;
 
 /// I2osp converts an integer to a big-endian octet-string of length `xLen` and
 /// copies it into `out` (see: https://tools.ietf.org/html/rfc8017#section-4.1)
@@ -80,22 +82,25 @@ pub fn biguint_to_scalar(cops: &CommonOps, x: &BigUint) -> Scalar {
 /// been encoded
 ///
 /// TODO: come up with better error type!!
-pub fn biguint_to_elem_unenc(id: CurveID, cops: &CommonOps, x: &BigUint) -> Elem<R> {
+pub fn biguint_to_elem_unenc(id: CurveID, cops: &CommonOps, x: &BigUint) -> Result<Elem<R>, Error> {
     let mut bytes = x.to_bytes_be();
     let fill_len = cops.num_limbs*LIMB_BYTES;
     if bytes.len() < fill_len {
         bytes = get_filled_buffer(&x.to_bytes_be(), cops.num_limbs*LIMB_BYTES);
     }
     let input = untrusted::Input::from(&bytes);
-    input.read_all(Unspecified, |input| {
-        Ok(
-            match id {
-                P256 => P256_PK_OPS.elem_parse(input).unwrap(),
-                P384 => P384_PK_OPS.elem_parse(input).unwrap(),
-                _ => panic!("blah")
-            }
-        )
-    }).unwrap()
+    let res = input.read_all(Unspecified, |input| {
+        match id {
+            P256 => Ok(P256_PK_OPS.elem_parse(input).unwrap()),
+            P384 => Ok(P384_PK_OPS.elem_parse(input).unwrap()),
+            _ => Err(Unspecified)
+        }
+    });
+
+    if let Err(_) = res {
+        return Err(errors::internal());
+    }
+    Ok(res.unwrap())
 }
 
 pub fn biguint_to_elem(cops: &CommonOps, x: &BigUint) -> Elem<R> {
@@ -137,7 +142,7 @@ pub fn invert_elem(ops: &CurveOps, x: Elem<R>) -> Elem<R> {
 }
 
 pub fn elem_one(id: CurveID, cops: &CommonOps) -> Elem<R> {
-    biguint_to_elem_unenc(id, cops, &BigUint::one())
+    biguint_to_elem_unenc(id, cops, &BigUint::one()).unwrap()
 }
 
 /// returns a new vector that is filled with 0's up to `fill_len` length
@@ -158,7 +163,7 @@ pub fn sqrt(input: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
 pub fn elem_sqrt(id: CurveID, cops: &CommonOps, elem: Elem<R>, exp: &BigUint, modulus: &BigUint) -> Elem<R> {
     let input = elem_to_biguint(cops.elem_unencoded(&elem));
     let res = sqrt(&input, exp, modulus);
-    biguint_to_elem_unenc(id, cops, &res)
+    biguint_to_elem_unenc(id, cops, &res).unwrap()
 }
 
 /// Returns an unencoded Scalar object
