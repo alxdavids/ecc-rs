@@ -83,7 +83,7 @@ impl HashToCurve {
         let R = Q0.add(&Q1).to_affine();
 
         // clear cofactor and return
-        R.scalar_mul(&self.h_eff).to_affine()
+        R.scalar_mul(&self.h_eff.to_bytes_be()).to_affine()
     }
 
     /// performs the hash_to_base algorithm, as specified in

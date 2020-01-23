@@ -18,13 +18,13 @@
 //!
 //! // perform scalar mult
 //! let k = BigUint::parse_bytes(b"0a", 16).unwrap();
-//! let k_base = AffinePoint::base_mul(P256, &k);
-//! let k_g = g.scalar_mul(&k);
+//! let k_base = AffinePoint::base_mul(P256, &k.to_bytes_be());
+//! let k_g = g.scalar_mul(&k.to_bytes_be());
 //!
 //! // check validity and equality
 //! assert_eq!(k_g.is_valid(), true);
 //! assert_eq!(k_base.is_valid(), true);
-//! assert_eq!(k_g.equals(k_base), true);
+//! assert_eq!(k_g.equals(&k_base), true);
 //!
 //! // add points
 //! let k_1_g = g.to_jacobian().add(&k_g).to_affine();
@@ -34,8 +34,8 @@
 //!
 //! // check points are equal
 //! let k_1 = BigUint::parse_bytes(b"0b", 16).unwrap();
-//! let k_1_chk_g = g.scalar_mul(&k_1).to_affine();
-//! // assert_eq!(k_1_g.equals(k_1_chk_g), true);
+//! let k_1_chk_g = g.scalar_mul(&k_1.to_bytes_be()).to_affine();
+//! // assert_eq!(k_1_g.equals(&k_1_chk_g), true);
 //! ```
 //!
 //! Conversion between affine and jacobian points is also simple:
@@ -202,14 +202,15 @@ impl AffinePoint<Encoded> {
 
     /// Performs `k*G`, where `G` is the fixed generator of the group, and `k`
     /// is the input scalar
-    pub fn base_mul(id: CurveID, scalar: &BigUint) -> JacobianPoint<Encoded> {
+    pub fn base_mul(id: CurveID, scalar: &[u8]) -> JacobianPoint<Encoded> {
         AffinePoint::get_generator(id).scalar_mul(scalar)
     }
 
     /// Performs `k*P` where `P` is some point on the curve and `k` is the input
     /// scalar
-    pub fn scalar_mul(&self, scalar: &BigUint) -> JacobianPoint<Encoded> {
-        let ring_sc = utils::biguint_to_scalar(self.ops.common, scalar);
+    pub fn scalar_mul(&self, scalar: &[u8]) -> JacobianPoint<Encoded> {
+        let sc_bu = BigUint::from_bytes_be(scalar);
+        let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
         let x_elem = utils::biguint_to_elem(self.ops.common, &self.x);
         let y_elem = utils::biguint_to_elem(self.ops.common, &self.y);
         let ring_pt = self.ops.point_mul(&ring_sc, &(x_elem, y_elem));
@@ -218,7 +219,7 @@ impl AffinePoint<Encoded> {
 
     /// Returns `true` if the two points are equal (share the same coordiantes
     /// and belong to the same curve), returns false otherwise
-    pub fn equals(&self, other: Self) -> bool {
+    pub fn equals(&self, other: &Self) -> bool {
         (self.x == other.x)
         && (self.y == other.y)
         && (self.id == other.id)
@@ -239,7 +240,7 @@ impl AffinePoint<Encoded> {
     ///
     /// TODO: Do this in a less naive way
     pub fn to_jacobian(&self) -> JacobianPoint<Encoded> {
-        self.scalar_mul(&BigUint::from(1_u64))
+        self.scalar_mul(&vec![1_u8])
     }
 
     /// Converts the point into either uncompressed or compressed format
@@ -429,7 +430,7 @@ impl JacobianPoint<Encoded> {
 
     /// Returns `true` if the coordinates for `self` and `other` are the same,
     /// and the points are on the same curve. Returns `false` otherwise.
-    pub fn equals(&self, other: Self) -> bool {
+    pub fn equals(&self, other: &Self) -> bool {
         (self.x == other.x)
         && (self.y == other.y)
         && (self.z == other.z)
@@ -520,7 +521,7 @@ mod tests {
             let test_gen = get_minus_y_point(&gen);
             for vector in MULT_TEST_VECTORS[i].iter() {
                 let k = BigUint::parse_bytes(vector[0].as_bytes(), 16).unwrap();
-                let aff = test_gen.scalar_mul(&k).to_affine();
+                let aff = test_gen.scalar_mul(&k.to_bytes_be()).to_affine();
 
                 // hex encode padding 0's (to_str_radix doesn't do this)
                 let x_hex = hex::encode(aff.x.to_bytes_be());
@@ -573,13 +574,13 @@ mod tests {
 
     #[test]
     fn validity_test() {
-        let k = BigUint::parse_bytes(b"0a", 16).unwrap();
+        let k = "0a".as_bytes();
         for &id in [P256, P384].iter() {
             let k_base = AffinePoint::base_mul(id, &k);
             let k_g = AffinePoint::get_generator(id).scalar_mul(&k);
             assert_eq!(k_g.is_valid(), true, "for id: {:?}", id);
             assert_eq!(k_base.is_valid(), true, "for id: {:?}", id);
-            assert_eq!(k_g.equals(k_base), true, "for id: {:?}", id);
+            assert_eq!(k_g.equals(&k_base), true, "for id: {:?}", id);
         }
     }
 
@@ -614,7 +615,7 @@ mod tests {
             };
             let unenc = enc.to_encoded();
             assert_eq!(unenc.is_valid(), true, "for id: {:?}", id);
-            assert_eq!(unenc.equals(gen), true, "for id: {:?}", id);
+            assert_eq!(unenc.equals(&gen), true, "for id: {:?}", id);
         }
     }
 
@@ -625,7 +626,7 @@ mod tests {
             let ser_de = gen.serialize(false);
             let deser_de = (AffinePoint::new(id)).deserialize(&ser_de);
             assert_eq!(deser_de.is_valid(), true, "decompressed point validity check for {:?}", id);
-            assert_eq!(deser_de.equals(gen), true, "decompressed point equality check for {:?}", id);
+            assert_eq!(deser_de.equals(&gen), true, "decompressed point equality check for {:?}", id);
         }
     }
 
@@ -636,7 +637,7 @@ mod tests {
             let ser_cmp = gen.serialize(true);
             let deser_cmp = (AffinePoint::new(id)).deserialize(&ser_cmp);
             assert_eq!(deser_cmp.is_valid(), true, "compressed point validity check for {:?}", id);
-            assert_eq!(deser_cmp.equals(gen), true, "compressed point equality check for {:?}", id);
+            assert_eq!(deser_cmp.equals(&gen), true, "compressed point equality check for {:?}", id);
         }
     }
 
