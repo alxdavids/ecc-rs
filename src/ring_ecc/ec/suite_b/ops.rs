@@ -225,6 +225,36 @@ impl PublicKeyOps {
     }
 }
 
+// Operations used by both ECDSA signing and ECDSA verification. In general
+// these must be side-channel resistant.
+pub struct ScalarOps {
+    pub common: &'static CommonOps,
+
+    pub scalar_inv_to_mont_impl: fn(a: &Scalar) -> Scalar<R>,
+    pub scalar_mul_mont: unsafe extern "C" fn(r: *mut Limb, a: *const Limb, b: *const Limb),
+}
+
+impl ScalarOps {
+    /// Returns the modular inverse of `a` (mod `n`). Panics of `a` is zero,
+    /// because zero isn't invertible.
+    pub fn scalar_inv_to_mont(&self, a: &Scalar) -> Scalar<R> {
+        assert!(!self.common.is_zero(a));
+        (self.scalar_inv_to_mont_impl)(a)
+    }
+
+    #[inline]
+    pub fn scalar_product<EA: Encoding, EB: Encoding>(
+        &self,
+        a: &Scalar<EA>,
+        b: &Scalar<EB>,
+    ) -> Scalar<<(EA, EB) as ProductEncoding>::Output>
+    where
+        (EA, EB): ProductEncoding,
+    {
+        mul_mont(self.scalar_mul_mont, a, b)
+    }
+}
+
 /// Operations on public scalars needed by ECDSA signature verification.
 pub struct PublicScalarOps {
     pub public_key_ops: &'static PublicKeyOps,

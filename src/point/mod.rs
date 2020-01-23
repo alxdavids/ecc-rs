@@ -89,11 +89,13 @@ use ring_ecc::ec::CurveID;
 use ring_ecc::ec::suite_b::verify_affine_point_is_on_the_curve;
 use ring_ecc::ec::suite_b::ops::Point as RingPoint;
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
-use ring_ecc::ec::suite_b::ops::Elem;
+use ring_ecc::ec::suite_b::ops::{Elem,Scalar};
 use ring_ecc::ec::suite_b::ops::p256::PRIVATE_KEY_OPS as P256_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PRIVATE_KEY_OPS as P384_OPS;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_SCALAR_OPS as P256_SCALAR_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_SCALAR_OPS as P384_SCALAR_OPS;
+use ring_ecc::ec::suite_b::ops::p256::SCALAR_OPS as P256_SCALAR_INV_OPS;
+use ring_ecc::ec::suite_b::ops::p384::SCALAR_OPS as P384_SCALAR_INV_OPS;
 use ring_ecc::ec::suite_b::ops::p384::P384_GENERATOR;
 use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
@@ -211,10 +213,22 @@ impl AffinePoint<Encoded> {
     pub fn scalar_mul(&self, scalar: &[u8]) -> JacobianPoint<Encoded> {
         let sc_bu = BigUint::from_bytes_be(scalar);
         let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
-        let x_elem = utils::biguint_to_elem(self.ops.common, &self.x);
-        let y_elem = utils::biguint_to_elem(self.ops.common, &self.y);
-        let ring_pt = self.ops.point_mul(&ring_sc, &(x_elem, y_elem));
-        JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.ops)
+        self.ring_point_mul(ring_sc)
+    }
+
+    /// Performs `(1/k)*P` where `P` is some point on the curve and `1/k` is the
+    /// inverse of the provided scalar input `k`.
+    pub fn inv_scalar_mul(&self, scalar: &[u8]) -> JacobianPoint<Encoded> {
+        let sc_bu = BigUint::from_bytes_be(scalar);
+        let ring_sc = utils::biguint_to_scalar(self.ops.common, &sc_bu);
+        let sc_ops = match self.id {
+            P256 => &P256_SCALAR_INV_OPS,
+            P384 => &P384_SCALAR_INV_OPS,
+            _ => panic!("bad id"),
+        };
+        let inv_sc_mont = sc_ops.scalar_inv_to_mont(&ring_sc);
+        let inv_sc = utils::scalar_unencoded(self.ops.common, sc_ops, &inv_sc_mont);
+        self.ring_point_mul(inv_sc)
     }
 
     /// Returns `true` if the two points are equal (share the same coordiantes
@@ -363,6 +377,14 @@ impl AffinePoint<Encoded> {
             panic!("error filling")
         }
         out
+    }
+
+    /// performs point multiplication with a ring Scalar object
+    fn ring_point_mul(&self, ring_sc: Scalar) -> JacobianPoint<Encoded> {
+        let x_elem = utils::biguint_to_elem(self.ops.common, &self.x);
+        let y_elem = utils::biguint_to_elem(self.ops.common, &self.y);
+        let ring_pt = self.ops.point_mul(&ring_sc, &(x_elem, y_elem));
+        JacobianPoint::from_ring_jac_point(ring_pt, self.id, self.ops)
     }
 
     /// Returns the `AffinePoint` object in unencoded format, removing the
@@ -530,6 +552,23 @@ mod tests {
                 assert_eq!(x_hex, vector[1], "x hex coordinate check for scalar_mult on curve: {:?} and scalar: {}", gen.id, vector[0]);
                 assert_eq!(y_hex, vector[2], "y hex coordinate check for scalar_mult on curve: {:?} and scalar: {}", gen.id, vector[0]);
             }
+        }
+    }
+
+    #[test]
+    fn inverse_sc_mul_test() {
+        for i in 0..2 {
+            let gen = match i {
+                0 => AffinePoint::get_generator(P256),
+                1 => AffinePoint::get_generator(P384),
+                _ => panic!("test failed")
+            };
+
+            let k = "random_scalar".as_bytes();
+            let kg = gen.scalar_mul(k).to_affine();
+            let inv_k_kg = kg.inv_scalar_mul(k).to_affine();
+            assert!(inv_k_kg.is_valid());
+            assert!(inv_k_kg.equals(&gen));
         }
     }
 

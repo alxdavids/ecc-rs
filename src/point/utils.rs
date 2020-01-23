@@ -4,7 +4,7 @@ use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar};
+use ring_ecc::ec::suite_b::ops::{Elem,CommonOps,Scalar,ScalarOps};
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
 use ring_ecc::ec::suite_b::ops::p256::PUBLIC_KEY_OPS as P256_PK_OPS;
 use ring_ecc::ec::suite_b::ops::p384::PUBLIC_KEY_OPS as P384_PK_OPS;
@@ -159,6 +159,11 @@ pub fn elem_sqrt(id: CurveID, cops: &CommonOps, elem: Elem<R>, exp: &BigUint, mo
     let input = elem_to_biguint(cops.elem_unencoded(&elem));
     let res = sqrt(&input, exp, modulus);
     biguint_to_elem_unenc(id, cops, &res)
+}
+
+/// Returns an unencoded Scalar object
+pub fn scalar_unencoded(cops: &CommonOps, sc_ops: &ScalarOps, sc: &Scalar<R>) -> Scalar {
+    sc_ops.scalar_product(sc, &biguint_to_scalar(cops, &BigUint::one()))
 }
 
 /// Performs an exponentiation in the underlying field that ascertains whether
