@@ -129,7 +129,7 @@ pub fn elem_to_bytes<T: RingEncoding>(elem: Elem<T>) -> Vec<u8> {
 
 /// gets the negative value of the element in the field
 ///
-/// TODO: uses BigInt ops
+/// TODO: remove BigInt ops
 pub fn minus_elem(cops: &CommonOps, p: &BigUint, elem: Elem<R>) -> Elem<R> {
     let elem_bu = elem_to_biguint(elem);
     biguint_to_elem(cops, &(p - elem_bu))
