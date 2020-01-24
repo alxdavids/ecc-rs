@@ -144,6 +144,7 @@ enum Unencoded {}
 /// use ecc_rs::point::*;
 /// let g = AffinePoint::get_generator(P256);
 /// ```
+#[derive(Clone)]
 pub struct AffinePoint<T> {
     x: BigUint,
     y: BigUint,
