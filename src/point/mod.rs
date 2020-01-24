@@ -118,6 +118,7 @@ pub const P384: CurveID = CurveID::P384;
 /// Used for indicating that a point is in montgomery encoding. This encoding is
 /// used for perfoming all group operations since this is how *ring* internals
 /// do it.
+#[derive(Clone)]
 pub enum Encoded {}
 /// Indiciates that the point is unencoded, aka transmission format. Remains
 /// private as we do not ever want to expose points in this form.
