@@ -87,7 +87,6 @@ use std::io::Error;
 
 use subtle::ConditionallySelectable;
 
-use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::ec::suite_b::verify_affine_point_is_on_the_curve;
 use ring_ecc::ec::suite_b::ops::Point as RingPoint;
@@ -104,8 +103,8 @@ use ring_ecc::limb::{Limb,LIMB_BYTES};
 use ring_ecc::ec::suite_b::ops::elem::MAX_LIMBS;
 use ring_ecc::ec::suite_b::private_key::affine_from_jacobian;
 use ring_ecc::arithmetic::montgomery::R;
-use ring_ecc::rand;
-use rand::sealed::SecureRandom;
+use ring_ecc::rand::SystemRandom;
+use ring_ecc::rand::sealed::SecureRandom;
 
 mod h2c;
 mod utils;
@@ -394,7 +393,7 @@ impl AffinePoint<Encoded> {
     pub fn uniform_bytes_from_field(&self) -> Result<Vec<u8>, Error> {
         let fill_len = self.ops.common.num_limbs*LIMB_BYTES;
         let mut out = vec![0; fill_len];
-        let rng = rand::SystemRandom::new();
+        let rng = SystemRandom::new();
         if let Err(_) = rng.fill_impl(&mut out) {
             return Err(errors::internal());
         }

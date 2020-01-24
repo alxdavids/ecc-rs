@@ -1,6 +1,5 @@
 //! utils module
 
-use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::arithmetic::montgomery::Encoding as RingEncoding;
 use ring_ecc::arithmetic::montgomery::R;

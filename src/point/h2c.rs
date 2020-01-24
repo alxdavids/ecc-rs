@@ -1,5 +1,4 @@
 //! h2c module
-use crate::ring_ecc;
 use ring_ecc::ec::CurveID;
 use ring_ecc::ec::suite_b::ops::Elem;
 use ring_ecc::ec::suite_b::ops::PrivateKeyOps as CurveOps;
