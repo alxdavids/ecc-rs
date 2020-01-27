@@ -189,3 +189,14 @@ pub fn elem_cmov(cops: &CommonOps, a: Elem<R>, b: Elem<R>, c: bool) -> Elem<R> {
     let res = (&c_bu * b_bu) + ((BigUint::one() - &c_bu) * a_bu);
     biguint_to_elem(cops, &res)
 }
+
+pub fn extend_bytes_to_field_len(id: CurveID, bytes: &[u8]) -> Vec<u8> {
+    let length = match id {
+        P256 => 32,
+        P384 => 48,
+        _ => panic!("bad curve specified"),
+    };
+    let mut v = vec![0; length];
+    v[length-bytes.len()..].copy_from_slice(bytes);
+    v
+}

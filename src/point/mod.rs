@@ -276,8 +276,8 @@ impl AffinePoint<Encoded> {
     pub fn serialize(&self, compress: bool) -> Vec<u8> {
         let p = self.to_unencoded();
         let mut out: Vec<u8> = Vec::new();
-        let x_bytes = p.x.to_bytes_be();
-        let y_bytes = p.y.to_bytes_be();
+        let x_bytes = utils::extend_bytes_to_field_len(self.id, &p.x.to_bytes_be());
+        let y_bytes = utils::extend_bytes_to_field_len(self.id, &p.y.to_bytes_be());
         if !compress {
             out.push(0x04);
             out.extend_from_slice(&x_bytes);
