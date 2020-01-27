@@ -11,6 +11,9 @@ elliptic curve points and manipulating them, including:
 - point serialization/deserialization (both compressed and uncompressed);
 - hash-to-curve (as specified in:
   [draft-irft-cfrg-hash-to-curve](https://tools.ietf.org/html/draft-irtf-cfrg-hash-to-curve-05)).
+  
+Currently, we only support the NIST P-256 and P-384 curves, as we are reliant on what is exposed
+in *ring*.
 
 Note that this is highly experimental code:
 
