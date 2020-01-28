@@ -492,10 +492,7 @@ impl JacobianPoint<Encoded> {
     /// Returns `true` if the coordinates for `self` and `other` are the same,
     /// and the points are on the same curve. Returns `false` otherwise.
     pub fn equals(&self, other: &Self) -> bool {
-        (self.x == other.x)
-        && (self.y == other.y)
-        && (self.z == other.z)
-        && (self.id == other.id)
+        self.to_affine().equals(&other.to_affine())
     }
 
     /// Converts the point to an `AffinePoint` object and runs `is_valid()`.
