@@ -1,8 +1,7 @@
 ecc-rs is derived almost entirely from the *ring* crate and so the license here
-is entirely dependent on the license for the *ring* crate, which is included
-below.
+is entirely dependent on the ISC-style license used in the *ring* crate.
 
-The license for the code that is included in ecc-rs is the following:
+The license for the code written in ecc-rs is the following:
 
    Copyright 2020 Alex Davidson.
 
