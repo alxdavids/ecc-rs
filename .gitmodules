@@ -1,3 +1,6 @@
 [submodule "hkdf-sha512"]
 	path = hkdf-sha512
 	url = git@github.com:alxdavids/hkdf-sha512.git
+[submodule "ring-ecc"]
+	path = ring-ecc
+	url = git@github.com:alxdavids/ring-ecc.git
