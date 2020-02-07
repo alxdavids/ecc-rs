@@ -76,7 +76,7 @@
 //! ```
 //! use ecc_rs::point::*;
 //! let p = AffinePoint::new(P256).unwrap();
-//! let r = p.hash_to_curve("some_input".as_bytes());
+//! let r = p.hash_to_curve("some_input".as_bytes(), "some_dst".to_string());
 //! assert!(r.is_valid());
 //! ```
 
@@ -385,8 +385,13 @@ impl AffinePoint<Encoded> {
     /// Hashes the input bytes `alpha` deterministically to a random point on
     /// the curve. Ensures that the output curve point does not reveal the
     /// discrete log with respect to the fixed group generator.
-    pub fn hash_to_curve(&self, alpha: &[u8]) -> Self {
-        let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common)).unwrap();
+    ///
+    /// # Arguments
+    ///
+    /// - `alpha`: The string that is used as the input to the hash-to-curve algorithm
+    /// - `dst`: The domain separation label for hash-to-curve
+    pub fn hash_to_curve(&self, alpha: &[u8], dst: String) -> Self {
+        let h2c = h2c::HashToCurve::new(self.id, self.ops, utils::get_modulus_as_biguint(self.ops.common), dst).unwrap();
         h2c.full(alpha)
     }
 
@@ -720,7 +725,7 @@ mod tests {
     fn hash_to_curve() {
         for &id in [P256,P384].iter() {
             let p = AffinePoint::new(id).unwrap();
-            let r = p.hash_to_curve("some_input".as_bytes());
+            let r = p.hash_to_curve("some_input".as_bytes(), "some_dst".to_string());
             assert!(r.is_valid(), "curve: {:?}", id);
         }
     }

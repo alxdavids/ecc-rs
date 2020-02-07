@@ -32,14 +32,14 @@ pub struct HashToCurve {
 
 impl HashToCurve {
     /// creates a new HashToCurve object
-    pub fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint) -> Result<Self, Error> {
+    pub fn new(id: CurveID, ops: &'static CurveOps, modulus: BigUint, dst: String) -> Result<Self, Error> {
         let sqrt_exp = (&modulus+BigUint::from(1_u64))/BigUint::from(4_u64); // (p+1)/4
         let is_sq_exp = (&modulus-BigUint::from(1_u64))/BigUint::from(2_u64); // (p-1)/2
         match id {
             P256 => Ok(
                 Self {
                     mapping_name: SSWU_RO,
-                    dst: format!("VOPRF-P256-SHA512-{}-", SSWU_RO),
+                    dst: format!("{}-P256-SHA512-{}-", dst, SSWU_RO),
                     z: Self::get_z_value(id, ops, &modulus, 10),
                     m: 1,
                     l: 48,
@@ -56,7 +56,7 @@ impl HashToCurve {
             P384 => Ok(
                 Self {
                     mapping_name: SSWU_RO,
-                    dst: format!("VOPRF-P384-SHA512-{}-", SSWU_RO),
+                    dst: format!("{}-P384-SHA512-{}-", dst, SSWU_RO),
                     z: Self::get_z_value(id, ops, &modulus, 12),
                     m: 1,
                     l: 72,
@@ -214,8 +214,8 @@ mod tests {
     fn h2b_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common), "VOPRF".to_string()).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common), "VOPRF".to_string()).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -233,8 +233,8 @@ mod tests {
     fn sswu_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common), "VOPRF".to_string()).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common), "VOPRF".to_string()).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -255,8 +255,8 @@ mod tests {
     fn full_test() {
         for i in 0..2 {
             let h2c = match i {
-                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common)).unwrap(),
-                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common)).unwrap(),
+                0 => HashToCurve::new(P256, &P256_OPS, utils::get_modulus_as_biguint(&P256_OPS.common), "VOPRF".to_string()).unwrap(),
+                1 => HashToCurve::new(P384, &P384_OPS, utils::get_modulus_as_biguint(&P384_OPS.common), "VOPRF".to_string()).unwrap(),
                 _ => panic!("bad i value"),
             };
             let mut count = 0;
@@ -275,7 +275,9 @@ mod tests {
 
     // test vectors taken from
     // https://github.com/alxdavids/voprf-poc/blob/master/go/oprf/groups/ecgroup/h2c_test.go
+    // commit: e6bea1098ca3c1a6b7412514412dc62c42bf0c86
     // (extra values derived for P-256).
+    // TODO: use official test vectors as in the golang case
     pub const HASH_TO_BASE_VECTORS: [[[&str; 2]; 5]; 2] = [
         [
             ["", "83535524130228921029437730219861701397353033315370087929938533023961338081610"],
