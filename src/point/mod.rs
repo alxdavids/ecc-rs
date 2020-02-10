@@ -396,7 +396,10 @@ impl AffinePoint<Encoded> {
     }
 
     /// Returns a uniform number of bytes equal to the length of elements in the
-    /// base field
+    /// base field.
+    ///
+    /// WARNING: THIS ONLY WORKS FOR P-256 and P-384 as the byte length is a
+    /// whole number, this wouldn't work P-521.
     pub fn uniform_bytes_from_field(&self) -> Result<Vec<u8>, Error> {
         let fill_len = self.ops.common.num_limbs*LIMB_BYTES;
         let mut out = vec![0; fill_len];
