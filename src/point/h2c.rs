@@ -39,7 +39,7 @@ impl HashToCurve {
             P256 => Ok(
                 Self {
                     mapping_name: SSWU_RO,
-                    dst: format!("{}-P256-SHA512-{}-", dst, SSWU_RO),
+                    dst: format!("{}-P256_XMD:SHA-512_SSWU_RO_", dst),
                     z: Self::get_z_value(id, ops, &modulus, 10),
                     m: 1,
                     l: 48,
@@ -56,7 +56,7 @@ impl HashToCurve {
             P384 => Ok(
                 Self {
                     mapping_name: SSWU_RO,
-                    dst: format!("{}-P384-SHA512-{}-", dst, SSWU_RO),
+                    dst: format!("{}-P384_XMD:SHA-512_SSWU_RO_", dst),
                     z: Self::get_z_value(id, ops, &modulus, 12),
                     m: 1,
                     l: 72,
